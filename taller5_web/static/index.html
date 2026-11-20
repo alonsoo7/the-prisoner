@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dilema del Prisionero Iterado — Juego Interactivo y Agentes Inteligentes</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+</head>
+<body class="latex-theme">
+  <div class="app-shell">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-eyebrow">Teoría de Juegos · IA</div>
+        <h1 class="brand-title">Dilema del Prisionero Iterado</h1>
+        <p class="brand-sub">Del juego interactivo y el torneo de Axelrod (1980) al diseño de agentes inteligentes</p>
+      </div>
+
+      <div class="nav-section-label">1. El Juego</div>
+      <nav class="nav-list">
+        <button class="nav-btn active" data-tab="play">
+          <span class="nav-btn-left"><span class="nav-icon">🎮</span><span>Juega el Dilema</span></span>
+        </button>
+        <button class="nav-btn" data-tab="axelrod">
+          <span class="nav-btn-left"><span class="nav-icon">◎</span><span>Torneo Axelrod (1980)</span></span>
+        </button>
+      </nav>
+
+      <div class="nav-section-label">2. Agentes Inteligentes</div>
+      <nav class="nav-list">
+        <button class="nav-btn" data-tab="overview">
+          <span class="nav-btn-left"><span class="nav-icon">◈</span><span>Evolución de Agentes</span></span>
+        </button>
+        <button class="nav-btn" data-tab="mdp">
+          <span class="nav-btn-left"><span class="nav-icon">▦</span><span>Modelo MDP y Bellman</span></span>
+        </button>
+        <button class="nav-btn" data-tab="learning">
+          <span class="nav-btn-left"><span class="nav-icon">∿</span><span>Aprendizaje Online (RL)</span></span>
+        </button>
+        <button class="nav-btn" data-tab="gary">
+          <span class="nav-btn-left"><span class="nav-icon">⑂</span><span>Búsqueda Expectimax</span></span>
+        </button>
+        <button class="nav-btn" data-tab="future">
+          <span class="nav-btn-left"><span class="nav-icon">🦜</span><span>¿Mejora a Futuro? Jacinto</span></span>
+        </button>
+      </nav>
+
+      <div class="nav-section-label">3. Arena y Laboratorio</div>
+      <nav class="nav-list">
+        <button class="nav-btn" data-tab="arena">
+          <span class="nav-btn-left"><span class="nav-icon">⚔</span><span>Duelos, Harper y Torneos</span></span>
+        </button>
+        <button class="nav-btn" data-tab="studio">
+          <span class="nav-btn-left"><span class="nav-icon">＋</span><span>Estrategias y Código</span></span>
+          <span class="nav-badge" id="nav-custom-count">0</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div>Motor en vivo sobre <code>axelrod</code> y <code>numpy</code></div>
+      </div>
+    </aside>
+
+    <!-- MAIN AREA -->
+    <div class="main-area">
+      <header class="topbar">
+        <div class="topbar-title-wrap">
+          <h2 id="topbar-title">Juega el Dilema del Prisionero Iterado</h2>
+          <p id="topbar-subtitle">Enfréntate ronda a ronda a estrategas clásicos y agentes de IA antes de analizar sus matemáticas</p>
+        </div>
+        <div class="topbar-right">
+          <div class="font-toggle" title="Cambiar tipografía de la interfaz">
+            <button type="button" class="active" data-font="latex">LaTeX</button>
+            <button type="button" data-font="modern">Moderna</button>
+          </div>
+          <span class="status-chip">
+            <span class="status-dot"></span>
+            <span id="global-status-text">Iniciando entorno...</span>
+          </span>
+        </div>
+      </header>
+
+      <main class="content-stage">
+        <!-- =============================================================== -->
+        <!-- SECTION 1: JUEGA EL DILEMA (PLAYABLE VOXEL ARENA) -->
+        <!-- =============================================================== -->
+        <section id="tab-play" class="tab-section active">
+          <!-- Voxel Arena Stage (Human vs Selected Strategy) -->
+          <div id="play-voxel-stage"></div>
+
+          <!-- Play Action Buttons -->
+          <div class="play-action-bar">
+            <button class="btn btn-play-c" id="btn-human-c">✓ COOPERAR (C)</button>
+            <button class="btn btn-play-d" id="btn-human-d">✕ TRAICIONAR (D)</button>
+            <div class="btn-group">
+              <button class="btn btn-secondary btn-sm" id="btn-human-reset">↻ Reiniciar Partida</button>
+              <button class="btn btn-primary btn-sm" id="btn-goto-axelrod">Ir al Torneo de Axelrod (1980) →</button>
+            </div>
+          </div>
+
+          <!-- Live Round Feedback & AI Internal Insight -->
+          <div id="play-insight-box" class="theorem-box mb-md">
+            <h4>Reglas del juego</h4>
+            <p>En cada ronda eliges simultáneamente <strong>Cooperar ($C$)</strong> o <strong>Traicionar ($D$)</strong>. Si ambos cooperan ganan <strong>$3$ pts</strong> cada uno; si traicionas a quien coopera ganas <strong>$5$ pts</strong> (y el otro $0$); si ambos traicionan reciben solo <strong>$1$ pt</strong>. Elige un rival abajo y prueba cuánta confianza puedes sostener.</p>
+          </div>
+
+          <!-- Character Picker ("Elige tu rival") -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Elige tu Rival</h3>
+                <p class="card-subtitle">Desde estrategas icónicos de 1980 hasta nuestros agentes de búsqueda Expectimax y aprendizaje por refuerzo online</p>
+              </div>
+              <div class="field compact" style="min-width:190px">
+                <select id="play-opponent-select"></select>
+              </div>
+            </div>
+            <div class="char-picker-grid" id="play-char-grid"></div>
+          </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SECTION 2: PRIMER TORNEO DE AXELROD (1980) — VOXEL RING + 10 SEEDS -->
+        <!-- =============================================================== -->
+        <section id="tab-axelrod" class="tab-section">
+          <div class="subtabs">
+            <button class="subtab-btn active" data-subtab="axl-ring">Ring Round-Robin y Nice vs. Nasty</button>
+            <button class="subtab-btn" data-subtab="axl-stats">Análisis Estadístico (10 Semillas)</button>
+          </div>
+
+          <!-- Subtab 2.1: Animated Voxel Ring + Nice/Nasty Leaderboard -->
+          <div id="subpanel-axl-ring" class="subpanel active">
+            <div class="toolbar">
+              <div class="controls-row">
+                <div class="field wide">
+                  <label for="ring-inject-select">Escenario del Torneo de Axelrod (1980)</label>
+                  <select id="ring-inject-select">
+                    <option value="none" selected>Torneo Original (15 estrategias clásicas de 1980)</option>
+                    <option value="gen1_rulito">+ Inyectar 1. Rulito (Miope γ=0)</option>
+                    <option value="gen2_cloud">+ Inyectar 2. Cloud (1-Step γ=0.90)</option>
+                    <option value="gen3_gary">+ Inyectar 3. Gary (Expectimax H=4 + Markov)</option>
+                    <option value="gen4_base">+ Inyectar 4. Base MDP Fija (CDDC)</option>
+                    <option value="gen5_rl">+ Inyectar 5. Mitcha (RL Olvido)</option>
+                    <option value="gen6_jacinto">+ Inyectar 6. Jacinto (RL + Safe UCB)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="btn-group">
+                <button class="btn btn-primary" id="btn-ring-animate">▶ Animar Enfrentamientos</button>
+                <button class="btn btn-secondary" id="btn-goto-evolution">Saltar al Estudio de Agentes IA →</button>
+              </div>
+            </div>
+
+            <div class="grid-asymmetric">
+              <!-- Left: Interactive Voxel Ring -->
+              <div class="card">
+                <div class="card-header">
+                  <div>
+                    <h3 class="card-title">Red de Enfrentamientos Todos contra Todos</h3>
+                    <p class="card-subtitle">Borde verde = estrategia <strong>Nice</strong> (nunca traiciona primero) · Borde rojo = <strong>Nasty</strong> · Morado = agente IA inyectado</p>
+                  </div>
+                </div>
+                <div id="axelrod-ring-svg" class="svg-diagram-box" style="background:linear-gradient(180deg,#f0f7fc 0%,#fbfdff 100%)"></div>
+                <div id="ring-char-detail" class="mt-md"></div>
+              </div>
+
+              <!-- Right: Nice vs Nasty Voxel Leaderboard -->
+              <div class="card">
+                <div class="card-header">
+                  <div>
+                    <h3 class="card-title">Clasificación (Promedio en 200 Rondas)</h3>
+                    <p class="card-subtitle">En el torneo original, los <strong>8 primeros puestos</strong> fueron ocupados exclusivamente por estrategias <em>Nice</em></p>
+                  </div>
+                </div>
+                <div id="axelrod-voxel-leaderboard" class="axelrod-lb-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Subtab 2.2: Exact 10-Seed Statistical Verification -->
+          <div id="subpanel-axl-stats" class="subpanel">
+            <div class="toolbar">
+              <div class="controls-row">
+                <div class="field wide">
+                  <label for="t10-gen-select">Generación a inspeccionar en detalle (16 jugadores · 10 semillas independientes)</label>
+                  <select id="t10-gen-select">
+                    <option value="4" selected>5. RL Olvido (n₀=2.0, λ=0.90) — Puesto #1/16</option>
+                    <option value="2">3. Expectimax H=4 + Markov — Puesto #1/16</option>
+                    <option value="3">4. Base MDP Fija (CDDC) — Puesto #4/16</option>
+                    <option value="1">2. Cloud (1-Step γ=0.90) — Puesto #6/16</option>
+                    <option value="0">1. Rulito (Miope γ=0) — Puesto #11/16</option>
+                  </select>
+                </div>
+              </div>
+              <div class="btn-group">
+                <button class="btn btn-secondary" id="btn-t10-toggle-grid">Ver las 5 generaciones juntas</button>
+              </div>
+            </div>
+
+            <div id="t10-focus-view" class="grid-2">
+              <article class="chart-card">
+                <div class="chart-card-head">
+                  <div>
+                    <h3 id="t10-focus-title">Ranking Completo (16 Jugadores · 10 Semillas)</h3>
+                    <div class="chart-note" id="t10-focus-sub">Media $\pm$ desviación estándar sobre semillas $0..9$</div>
+                  </div>
+                </div>
+                <div class="canvas-wrap tall"><canvas id="cv-t10-focus"></canvas></div>
+              </article>
+              <article class="chart-card">
+                <div class="chart-card-head">
+                  <div>
+                    <h3>Distribución y Estabilidad entre las 10 Semillas</h3>
+                    <div class="chart-note">Caja Q1–Q3, mediana, media ($\diamond$) y las 10 realizaciones individuales frente a Tit For Tat</div>
+                  </div>
+                </div>
+                <div class="canvas-wrap tall"><canvas id="cv-t10-box"></canvas></div>
+              </article>
+            </div>
+
+            <div id="t10-full-grid" class="grid-3 hidden">
+              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-0" style="color:#d62728">1. Rulito</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-0"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-1" style="color:#ef6c00">2. Cloud</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-1"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-2" style="color:#7b3fa0">3. Expectimax</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-2"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-3" style="color:#1565c0">4. Base CDDC</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-3"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-4" style="color:#2e7d32">5. RL Olvido</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-4"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><h3>Distribución 10 Semillas</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-box-grid"></canvas></div></article>
+            </div>
+          </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SECTION 3: EVOLUCIÓN DE AGENTES -->
+        <!-- =============================================================== -->
+        <section id="tab-overview" class="tab-section">
+          <div class="subtabs">
+            <button class="subtab-btn active" data-subtab="evo-summary">Resumen y Teoremas</button>
+            <button class="subtab-btn" data-subtab="evo-duels">Duelos Clave (1v1)</button>
+            <button class="subtab-btn" data-subtab="evo-table">Tabla Comparativa</button>
+          </div>
+
+          <div id="subpanel-evo-summary" class="subpanel active">
+            <div class="kpi-grid">
+              <div class="kpi-card blue">
+                <div class="kpi-label">Entorno Empírico</div>
+                <div class="kpi-value" id="kpi-transitions">173,130</div>
+                <div class="kpi-sub">Transiciones → política base <span class="mono">CDDC</span></div>
+              </div>
+              <div class="kpi-card green">
+                <div class="kpi-label">RL con Olvido · Axelrod</div>
+                <div class="kpi-value">#1 / 16</div>
+                <div class="kpi-sub">$2.632 \pm 0.014$ pts/ronda (10 semillas)</div>
+              </div>
+              <div class="kpi-card purple">
+                <div class="kpi-label">Expectimax + Markov</div>
+                <div class="kpi-value">#2 / 41</div>
+                <div class="kpi-sub">Harper ($2.808$) · #10/175 Mega-Torneo</div>
+              </div>
+              <div class="kpi-card green">
+                <div class="kpi-label">Ganancia Online (175 est.)</div>
+                <div class="kpi-value">+77 puestos</div>
+                <div class="kpi-sub">De #100 (Base fija) a <strong>#23</strong> con olvido</div>
+              </div>
+            </div>
+
+            <div class="grid-asymmetric">
+              <article class="chart-card">
+                <div class="chart-card-head">
+                  <div>
+                    <h3>Progreso por Generación en el Torneo de Axelrod (1980)</h3>
+                    <div class="chart-note">16 competidores · $T = 200$ turnos · línea punteada: Tit For Tat ($2.560$)</div>
+                  </div>
+                  <button class="btn btn-secondary btn-sm" id="btn-rerun-evolution">↻ Re-simular</button>
+                </div>
+                <div class="canvas-wrap"><canvas id="cv-evo-axelrod"></canvas></div>
+              </article>
+
+              <div style="display:flex;flex-direction:column;gap:14px">
+                <div class="theorem-box">
+                  <h4>Teorema 1 — Colapso Miope al Equilibrio de Nash ($\gamma = 0$)</h4>
+                  <p>Al maximizar solo la recompensa inmediata sobre $\hat{p}_s = \hat{P}(O_t = C \mid s_{t-1})$, traicionar ($D$) domina estrictamente a cooperar ($C$) para toda estimación empírica:</p>
+                  <div class="math-block">$$\hat{Q}(s, D) - \hat{Q}(s, C) = (4\hat{p}_s + 1) - 3\hat{p}_s = \hat{p}_s + 1 \ge 1 > 0$$</div>
+                </div>
+                <div class="theorem-box">
+                  <h4>Teorema 2 — Contador Efectivo y Piso de Plasticidad ($\lambda \in [0, 1)$)</h4>
+                  <p>Actualizando cada contexto $(s_{t-1}, A_t)$ con $n_k = \lambda n_{k-1} + 1$ y paso $\eta_k = 1/n_k$, el aprendizaje conserva plasticidad permanente:</p>
+                  <div class="math-block">$$n_\infty = \frac{1}{1-\lambda}, \qquad \eta_\infty = 1 - \lambda, \qquad \mathrm{Var}(p_\infty) = p^*(1-p^*)\frac{1-\lambda}{1+\lambda}$$</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="subpanel-evo-duels" class="subpanel">
+            <div class="grid-2">
+              <article class="chart-card">
+                <div class="chart-card-head">
+                  <div>
+                    <h3>Duelo contra Grudger: Exploración Forzada vs. Apertura Nice</h3>
+                    <div class="chart-note">Traicionar durante la exploración inicial ($t &lt; 10$) activa castigo eterno ($202$ vs. $600$ pts)</div>
+                  </div>
+                </div>
+                <div class="canvas-wrap"><canvas id="cv-evo-grudger"></canvas></div>
+              </article>
+              <article class="chart-card">
+                <div class="chart-card-head">
+                  <div>
+                    <h3>Adaptación contra Defector: Base Fija vs. RL con Olvido</h3>
+                    <div class="chart-note">La política fija CDDC queda atrapada en $0.500$; el RL corrige a $0.925$ pts/ronda</div>
+                  </div>
+                </div>
+                <div class="canvas-wrap"><canvas id="cv-evo-defector"></canvas></div>
+              </article>
+            </div>
+            <article class="chart-card">
+              <div class="chart-card-head">
+                <div>
+                  <h3>Desempeño por Arquetipo de Rival ($T = 200$ turnos)</h3>
+                  <div class="chart-note">Reciprocidad, explotación pura, ciclo determinista y entornos no estacionarios</div>
+                </div>
+              </div>
+              <div class="canvas-wrap"><canvas id="cv-evo-conditions"></canvas></div>
+            </article>
+          </div>
+
+          <div id="subpanel-evo-table" class="subpanel">
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-title">Comparativa Completa entre Generaciones</h3>
+                  <p class="card-subtitle">Haz clic en cualquier condición 1v1 para inspeccionar su duelo ronda a ronda</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Escenario</th>
+                      <th>Protocolo</th>
+                      <th class="text-right">1. Rulito</th>
+                      <th class="text-right">2. Cloud</th>
+                      <th class="text-right">3. Expectimax</th>
+                      <th class="text-right">4. Base CDDC</th>
+                      <th class="text-right">5. RL Olvido</th>
+                      <th>Inspeccionar</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-paper-summary"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SECTION 4: MODELO MDP Y BELLMAN -->
+        <!-- =============================================================== -->
+        <section id="tab-mdp" class="tab-section">
+          <div class="subtabs">
+            <button class="subtab-btn active" data-subtab="mdp-core">Matriz 8×4 y Bellman</button>
+            <button class="subtab-btn" data-subtab="mdp-lab">Perturbar Probabilidades $p_0$</button>
+            <button class="subtab-btn" data-subtab="mdp-thm2">Actualización Paso a Paso</button>
+            <button class="subtab-btn" data-subtab="mdp-sweep">Impacto de $\lambda$ en Axelrod</button>
+          </div>
+
+          <div id="subpanel-mdp-core" class="subpanel active">
+            <div class="toolbar">
+              <div class="controls-row">
+                <div class="field"><label>Descuento $\gamma$ <span class="val-mono" id="lbl-mdp-gamma">0.90</span></label><input id="mdp-gamma" type="range" min="0.05" max="0.98" step="0.01" value="0.90" /></div>
+                <div class="field"><label>Peso inicial $n_0$ <span class="val-mono" id="lbl-mdp-n0">2.0</span></label><input id="mdp-n0" type="range" min="0.5" max="10" step="0.5" value="2.0" /></div>
+                <div class="field"><label>Factor de olvido $\lambda$ <span class="val-mono" id="lbl-mdp-lam">0.90</span></label><input id="mdp-lam" type="range" min="0.50" max="1.00" step="0.01" value="0.90" /></div>
+                <div class="field compact"><label for="mdp-laplace">Laplace $\alpha$</label><input id="mdp-laplace" type="number" min="0" max="10" step="0.5" value="0" /></div>
+              </div>
+              <div class="btn-group">
+                <button class="btn btn-primary" id="btn-mdp-recalc">Recalcular Bellman</button>
+                <button class="btn btn-secondary" id="btn-mdp-reset-emp">Restaurar Base</button>
+              </div>
+            </div>
+
+            <div class="grid-2">
+              <article class="chart-card">
+                <div class="chart-card-head"><div><h3>Probabilidades Empíricas del Entorno</h3><div class="chart-note">$\hat{p}_0(s, a) = P(O_t = C \mid s_{t-1} = s, A_t = a)$ sobre $173{,}130$ ventanas</div></div></div>
+                <div class="canvas-wrap"><canvas id="cv-mdp-probs"></canvas></div>
+              </article>
+              <article class="chart-card">
+                <div class="chart-card-head"><div><h3>Solución Óptima de Bellman ($Q^*$ y $\pi_0$)</h3><div class="chart-note">Política emergente: <strong class="mono" id="mdp-policy-badge">CDDC</strong> (Win-Stay, Lose-Shift)</div></div></div>
+                <div class="canvas-wrap"><canvas id="cv-mdp-bellman"></canvas></div>
+              </article>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div><h3 class="card-title">Tabla Completa de Transición $T_0$ ($8 \times 4$) y Valores de Bellman</h3><p class="card-subtitle">Cada fila $(s_{t-1}, A_t)$ posee dos ceros estructurales porque la acción propia fija la primera coordenada de $s_t = (A_t, O_t)$</p></div>
+                <span class="badge badge-blue" id="mdp-pol-summary-pill">π₀ = CDDC</span>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Contexto $(s_{t-1}, A_t)$</th><th class="text-right">Coop $K$</th><th class="text-right">Total $N$</th><th class="text-right">$\hat{p}_0(s, a)$</th>
+                      <th class="text-right">$\to CC$</th><th class="text-right">$\to CD$</th><th class="text-right">$\to DC$</th><th class="text-right">$\to DD$</th>
+                      <th class="text-center">Estado</th><th class="text-right">$V^*(s)$</th><th class="text-right">$Q^*(s, C)$</th><th class="text-right">$Q^*(s, D)$</th><th class="text-center">$\pi_0[s]$ ($\Delta Q^*$)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-mdp-table1"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div id="subpanel-mdp-lab" class="subpanel">
+            <div class="card">
+              <div class="card-header">
+                <div><h3 class="card-title">Editor Interactivo de las 8 Probabilidades del Entorno</h3><p class="card-subtitle">Modifica cualquier $\hat{p}_0(s,a)$ para observar cómo cambia instantáneamente $\pi_0$ y la adaptación frente a Defector</p></div>
+                <span class="badge badge-blue" id="mdp-lab-pol-pill">π₀ = CDDC</span>
+              </div>
+              <div class="prob-editor-grid" id="mdp-prob-sliders"></div>
+            </div>
+            <article class="chart-card">
+              <div class="chart-card-head"><div><h3>Cruce de Decisión Online frente a Defector ($t = 1..30$)</h3><div class="chart-note">Caída de $P_t(C \mid DD, C)$ y $P_t(C \mid CD, D)$ (izq.) junto a $\Delta Q_t(DD) &lt; 0$ (der.)</div></div></div>
+              <div class="canvas-wrap"><canvas id="cv-mdp-defector"></canvas></div>
+            </article>
+          </div>
+
+          <div id="subpanel-mdp-thm2" class="subpanel">
+            <div class="card">
+              <div class="card-header">
+                <div><h3 class="card-title">Simulador Interactivo de la Regla de Actualización con Olvido</h3><p class="card-subtitle">Observa el contexto $(CC, C)$ ($p_0 = 0.9530$) comparando olvido activo ($\lambda$) frente a conteo acumulativo ($\lambda = 1.00$)</p></div>
+                <div class="btn-group">
+                  <button class="btn btn-success btn-sm" id="btn-sim-add-c">＋ Coopera ($y=1$)</button>
+                  <button class="btn btn-danger btn-sm" id="btn-sim-add-d">－ Traiciona ($y=0$)</button>
+                  <button class="btn btn-primary btn-sm" id="btn-sim-50c5d">▶ Secuencia 50 C + 5 D</button>
+                  <button class="btn btn-secondary btn-sm" id="btn-sim-reset">Reiniciar</button>
+                </div>
+              </div>
+              <div class="math-block">$$n_k = \lambda n_{k-1} + 1, \quad \eta_k = \frac{1}{n_k}, \quad p_k = \begin{cases} p_{k-1} + \eta_k(1 - p_{k-1}) &amp; \text{si } y_k = 1 \text{ (suma)} \\ p_{k-1} - \eta_k p_{k-1} &amp; \text{si } y_k = 0 \text{ (resta)} \end{cases}$$</div>
+              <div class="grid-asymmetric mt-md" style="margin-bottom:0">
+                <div class="canvas-wrap"><canvas id="cv-thm2-sim"></canvas></div>
+                <div class="table-wrap" style="max-height:340px;overflow-y:auto">
+                  <table class="data-table">
+                    <thead><tr><th>$k$</th><th>Evento</th><th class="text-right">$n_k$</th><th class="text-right">$\eta_k$</th><th class="text-right">$p_k$ ($\lambda$)</th><th class="text-right">$p_k$ ($\lambda=1$)</th></tr></thead>
+                    <tbody id="tbody-thm2-sim"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="subpanel-mdp-sweep" class="subpanel">
+            <article class="chart-card">
+              <div class="chart-card-head">
+                <div><h3>Barrido del Factor de Olvido $\lambda$ en el Torneo de Axelrod (1980)</h3><div class="chart-note">Comparación entre agente sin prior ($0.50$), distintos valores de $\lambda$, política fija ($\eta = 0$) y Tit For Tat</div></div>
+                <button class="btn btn-primary btn-sm" id="btn-mdp-run-sweep">↻ Ejecutar Barrido en Vivo</button>
+              </div>
+              <div class="canvas-wrap tall"><canvas id="cv-mdp-sweep"></canvas></div>
+            </article>
+          </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SECTION 5: APRENDIZAJE ONLINE (RL) -->
+        <!-- =============================================================== -->
+        <section id="tab-learning" class="tab-section">
+          <div class="toolbar">
+            <div class="controls-row">
+              <div class="field compact"><label for="lrn-n0">$n_0$</label><input id="lrn-n0" type="number" step="0.5" min="0.5" max="10" value="2.0" /></div>
+              <div class="field compact"><label for="lrn-lam">$\lambda$ principal</label><input id="lrn-lam" type="number" step="0.05" min="0.50" max="1.00" value="0.90" /></div>
+              <div class="field compact"><label for="lrn-gamma">$\gamma$</label><input id="lrn-gamma" type="number" step="0.05" min="0.10" max="0.99" value="0.90" /></div>
+              <div class="field compact"><label for="lrn-switch">Cambio $C \to D$</label><input id="lrn-switch" type="number" min="10" max="180" value="50" /></div>
+              <div class="field compact"><label for="lrn-window">Ventana móvil</label><input id="lrn-window" type="number" min="3" max="40" value="15" /></div>
+              <div class="field"><label for="lrn-matrix-rival">Rival para $\Delta Q_t$ y $T_{60}$</label><select id="lrn-matrix-rival"></select></div>
+              <div class="field compact"><label for="lrn-seed">Seed</label><input id="lrn-seed" type="number" value="42" /></div>
+            </div>
+            <button class="btn btn-primary" id="btn-run-learning">▶ Actualizar Curvas</button>
+          </div>
+
+          <div class="subtabs">
+            <button class="subtab-btn active" data-subtab="lrn-speed">Velocidad y Cambio $C \to D$</button>
+            <button class="subtab-btn" data-subtab="lrn-arch">Arquetipos y Política $\pi_t$</button>
+            <button class="subtab-btn" data-subtab="lrn-mech">Tasa $\eta_k$ y Ventaja $\Delta Q_t$</button>
+            <button class="subtab-btn" data-subtab="lrn-phases">3 Fases y Matriz $T_0 \to T_{60}$</button>
+          </div>
+
+          <div id="subpanel-lrn-speed" class="subpanel active">
+            <div class="grid-2">
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Rapidez de Ajuste frente a Defector</h3><div class="chart-note">Estrella (★) marca el primer turno en que $\pi_t[DD] = D$</div></div></div><div class="canvas-wrap tall"><canvas id="cv-lrn-defector-speed"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Adaptación ante Cambio de Régimen ($C \to D$)</h3><div class="chart-note">El factor de olvido ($\lambda &lt; 1$) supera a la memoria infinita ($\lambda = 1$) y a la política fija</div></div></div><div class="canvas-wrap tall"><canvas id="cv-lrn-switch"></canvas></div></article>
+            </div>
+          </div>
+
+          <div id="subpanel-lrn-arch" class="subpanel">
+            <div class="grid-2">
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Convergencia de Probabilidades por Arquetipo</h3><div class="chart-note">Respuesta del mismo modelo frente a Cooperator, Alternator, Random y Defector</div></div></div><div class="canvas-wrap tall"><canvas id="cv-lrn-archetypes"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Mutación de la Política $\pi_t[s]$ en Vivo (Turnos 1–40)</h3><div class="chart-note">Verde = Cooperar ($C$), Rojo = Traicionar ($D$) por estado</div></div></div><div class="canvas-wrap tall"><canvas id="cv-lrn-policy-map"></canvas></div></article>
+            </div>
+          </div>
+
+          <div id="subpanel-lrn-mech" class="subpanel">
+            <div class="grid-2">
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Tasa Variable de Aprendizaje $\eta_k = 1 / n_k$</h3><div class="chart-note">Agilidad inicial alta y convergencia al piso de plasticidad $\eta_\infty = 1 - \lambda$</div></div></div><div class="canvas-wrap tall"><canvas id="cv-lrn-eta"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Evolución de la Ventaja de Bellman $\Delta Q_t(s)$</h3><div class="chart-note" id="lrn-dq-subtitle">Cruces por cero determinan las mutaciones de política</div></div></div><div class="canvas-wrap tall"><canvas id="cv-lrn-deltaq"></canvas></div></article>
+            </div>
+          </div>
+
+          <div id="subpanel-lrn-phases" class="subpanel">
+            <div class="grid-2">
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Adaptación en 3 Fases ($C \to D \to C$, Ventana Móvil)</h3><div class="chart-note">En Fase 3 el agente con olvido re-explota alcanzando $5.00$ pts/ronda</div></div></div><div class="canvas-wrap tall"><canvas id="cv-lrn-3phase"></canvas></div></article>
+              <article class="chart-card">
+                <div class="chart-card-head"><div><h3>Transformación de la Matriz Ambiental $T_0 \to T_{60}$</h3><div class="chart-note" id="lrn-mat-subtitle">Contraste entre el prior inicial y la matriz especializada tras 60 turnos</div></div></div>
+                <div class="grid-2" style="margin-bottom:0;gap:12px">
+                  <div><div class="muted text-center mb-sm"><strong>Matriz Inicial $T_0$</strong></div><div class="canvas-wrap"><canvas id="cv-lrn-mat0"></canvas></div></div>
+                  <div><div class="muted text-center mb-sm"><strong id="lbl-mat60-title">Matriz $T_{60}$</strong></div><div class="canvas-wrap"><canvas id="cv-lrn-mat60"></canvas></div></div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SECTION 6: BÚSQUEDA EXPECTIMAX (GARY) -->
+        <!-- =============================================================== -->
+        <section id="tab-gary" class="tab-section">
+          <div class="toolbar">
+            <div class="controls-row">
+              <div class="field compact"><label>Horizonte $H$ <span class="val-mono" id="lbl-gary-h">4</span></label><input id="gary-h" type="range" min="1" max="4" step="1" value="4" /></div>
+              <div class="field"><label>Descuento $\gamma$ <span class="val-mono" id="lbl-gary-gamma">0.95</span></label><input id="gary-gamma" type="range" min="0.50" max="0.98" step="0.01" value="0.95" /></div>
+              <div class="field wide"><label for="gary-rival">Rival a enfrentar</label><select id="gary-rival"></select></div>
+              <div class="field compact"><label for="gary-seed">Seed</label><input id="gary-seed" type="number" value="42" /></div>
+            </div>
+            <button class="btn btn-purple" id="btn-run-gary">▶ Simular Partida</button>
+          </div>
+
+          <div class="subtabs">
+            <button class="subtab-btn active" data-subtab="gary-step">Decisión Ronda a Ronda y Ventana</button>
+            <button class="subtab-btn" data-subtab="gary-global">Dinámica Global y Ablación</button>
+          </div>
+
+          <div id="subpanel-gary-step" class="subpanel active">
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-title">Ventana de Observación y Control Ronda a Ronda</h3>
+                  <p class="card-subtitle" id="gary-turn-summary">Avanza turno a turno para ver cada cálculo exacto del árbol Expectimax antes de decidir</p>
+                </div>
+                <span class="badge badge-purple" id="gary-turn-badge">Turno 1 / 200</span>
+              </div>
+
+              <div class="playback-bar">
+                <button class="btn btn-purple btn-sm" id="btn-gary-play">▶ Reproducir</button>
+                <button class="btn btn-secondary btn-sm" id="btn-gary-prev">◀ -1</button>
+                <button class="btn btn-secondary btn-sm" id="btn-gary-next">+1 ▶</button>
+                <input id="gary-turn-slider" type="range" min="1" max="200" value="1" />
+                <span class="mono" id="gary-score-chip" style="font-weight:700">Media: 3.000</span>
+              </div>
+
+              <div class="window-strip" id="gary-window-strip"></div>
+
+              <div class="calc-steps-grid">
+                <div class="calc-step-card">
+                  <div class="calc-step-head"><span class="step-num">1</span><span>Ventana y Conteo Frecuentista $E_t$</span></div>
+                  <div id="gary-step1-body"></div>
+                </div>
+                <div class="calc-step-card">
+                  <div class="calc-step-head"><span class="step-num">2</span><span>Heurística Markov en Hojas ($h = \gamma^H V$)</span></div>
+                  <div id="gary-step2-body"></div>
+                </div>
+                <div class="calc-step-card">
+                  <div class="calc-step-head"><span class="step-num">3</span><span>Evaluación Raíz y Decisión Final</span></div>
+                  <div id="gary-step3-body"></div>
+                </div>
+              </div>
+
+              <div class="svg-diagram-box" id="gary-markov-svg"></div>
+
+              <div class="mt-md">
+                <div class="legend-inline mb-sm">
+                  <strong>Cinta de la partida (clic para saltar):</strong>
+                  <span><span class="legend-dot" style="background:#2e7d32"></span>CC (+3)</span>
+                  <span><span class="legend-dot" style="background:#1976d2"></span>DC (+5)</span>
+                  <span><span class="legend-dot" style="background:#ef6c00"></span>DD (+1)</span>
+                  <span><span class="legend-dot" style="background:#d32f2f"></span>CD (0)</span>
+                </div>
+                <div class="ribbon-grid" id="gary-ribbon"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="subpanel-gary-global" class="subpanel">
+            <div class="grid-2">
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Horizonte Efectivo $L_\gamma = (1-\gamma)^{-1}$</h3><div class="chart-note">Balance entre peso relativo del futuro e inercia histórica</div></div></div><div class="canvas-wrap"><canvas id="cv-gary-horizon"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Evaluación en Raíz $\bar{f}_t(C)$ vs. $\bar{f}_t(D)$ frente a Tit For Tat</h3><div class="chart-note">Visión descontada de Expectimax frente al colapso miope de Rulito</div></div></div><div class="canvas-wrap"><canvas id="cv-gary-root"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Convergencia del Vector Frecuentista $E_t$</h3><div class="chart-note" id="gary-e-subtitle">Evolución de las 4 probabilidades condicionales</div></div></div><div class="canvas-wrap"><canvas id="cv-gary-evec"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Estudio de Ablación: Árbol $H=4$ vs. Heurística de Markov</h3><div class="chart-note">Aporte de la cadena de Markov terminal en Axelrod, Harper y Mega-Torneo</div></div></div><div class="canvas-wrap"><canvas id="cv-gary-ablation"></canvas></div></article>
+            </div>
+          </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SECTION 6B: ¿POSIBLE MEJORA A FUTURO? — JACINTO (TALLER 6)      -->
+        <!-- =============================================================== -->
+        <section id="tab-future" class="tab-section">
+          <div class="card">
+            <div class="card-header">
+              <div style="display:flex;align-items:center;gap:14px">
+                <div id="jacinto-hero-avatar"></div>
+                <div>
+                  <h3 class="card-title">¿Posible Mejora a Futuro? — Jacinto (Taller 6)</h3>
+                  <p class="card-subtitle">Guacamayo Jacinto · Fusión de aprendizaje online con olvido (Mitcha) + Exploración Segura UCB para romper óptimos locales como <code>Alternator</code></p>
+                </div>
+              </div>
+              <div class="btn-group">
+                <button class="btn btn-primary btn-sm" id="btn-jacinto-vs-alternator">⚔ Probar Jacinto vs Alternator</button>
+                <button class="btn btn-secondary btn-sm" id="btn-play-jacinto">🎮 Jugar contra Jacinto</button>
+              </div>
+            </div>
+
+            <div class="theorem-box mb-md">
+              <h4>¿Por qué Mitcha (RL Olvido) se estancaba frente a <code>Alternator</code> en $2.500$ pts/ronda?</h4>
+              <p>Al ser puramente <em>greedy</em> ($\arg\max_a Q_t^*(s, a)$), <strong>Mitcha</strong> converge en $t=23$ a la política <code>CDCC</code> (ciclo <code>CD ↔ DC</code> de $2.500$ pts/ronda) y <strong>nunca prueba jugar $D$ en $DC$ ni en $DD$</strong>. Por ello el contexto $(DD, D)$ queda congelado en el prior supervisado $p_0(DD, D) = 0.1574$, cuando contra <code>Alternator</code> la probabilidad real es $p_{\text{real}}(DD, D) = 1.000$.</p>
+            </div>
+
+            <div class="theorem-box mb-md" style="border-left-color:#1d4ed8;background:#eff6ff">
+              <h4>Solución propuesta en Jacinto: Exploración UCB con Compuerta de Seguridad ($s \neq CC$)</h4>
+              <p><strong>Jacinto</strong> añade un bono UCB $Q_{\mathrm{UCB}}(s, a) = Q_t^*(s, a) + c\sqrt{\frac{\ln(t+1)}{1 + k_{s,a}}}$ ($c = 1.5$), pero <strong>bloquea toda exploración cuando $s = CC$ y $P_t(C \mid CC, C) \ge 0.85$</strong>. Así jamás traiciona gratuitamente a estrategas recíprocos como <code>TitForTat</code> o <code>Grudger</code> ($3.000$ pts/ronda), pero sí explora $(DC, D)$ y $(DD, D)$ hasta descubrir el ciclo óptimo <code>DC ↔ DD</code> de <strong>$2.935$ pts/ronda ($2.980$ en los últimos 100 turnos)</strong>.</p>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Condición Experimental ($T=200$, <code>seed=42</code>)</th>
+                    <th class="text-right">5. Mitcha (RL Olvido)</th>
+                    <th class="text-right">6. Jacinto (RL + Safe UCB)</th>
+                    <th>Impacto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Torneo Axelrod 1980</strong> (5 reps)</td>
+                    <td class="text-right mono">2.662 ± 0.024 (#1/16)</td>
+                    <td class="text-right mono"><strong>2.649 ± 0.025 (#1/16)</strong></td>
+                    <td>Mantiene el <strong>Puesto #1/16</strong> sobre Stein &amp; Rapoport y TFT</td>
+                  </tr>
+                  <tr>
+                    <td><strong>vs <code>Alternator</code></strong> (1v1, $T=200$)</td>
+                    <td class="text-right mono">2.450 (2.500 L100)</td>
+                    <td class="text-right mono" style="color:#1d4ed8"><strong>2.935 (2.980 L100)</strong></td>
+                    <td><strong>+0.485 pts/ronda</strong> · Explota ciclo <code>DC ↔ DD</code> casi al óptimo <code>3.000</code></td>
+                  </tr>
+                  <tr>
+                    <td><strong>vs <code>TitForTat</code> / <code>Grudger</code></strong></td>
+                    <td class="text-right mono">3.000 / 3.000</td>
+                    <td class="text-right mono"><strong>3.000 / 3.000</strong></td>
+                    <td>Compuerta segura evita traiciones espurias en <code>CC</code></td>
+                  </tr>
+                  <tr>
+                    <td><strong>vs <code>Defector</code></strong> (1v1, $T=200$)</td>
+                    <td class="text-right mono">0.925 (1.000 L100)</td>
+                    <td class="text-right mono">0.880 (0.970 L100)</td>
+                    <td>Mínimo costo por verificar $(DD, C)$ antes de fijar $D$</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SECTION 7: DUELOS, HARPER Y TORNEOS -->
+        <!-- =============================================================== -->
+        <section id="tab-arena" class="tab-section">
+          <div class="subtabs">
+            <button class="subtab-btn active" data-subtab="duel-1v1">Duelo 1v1 (Voxel + Ventana)</button>
+            <button class="subtab-btn" data-subtab="duel-h2h">Matriz Head-to-Head</button>
+            <button class="subtab-btn" data-subtab="tourn-harper-mega">Harper 41 y Mega-Torneo 175</button>
+            <button class="subtab-btn" data-subtab="tourn-live">Ejecutar Torneo en Vivo</button>
+          </div>
+
+          <div id="subpanel-duel-1v1" class="subpanel active">
+            <div class="toolbar">
+              <div class="controls-row">
+                <div class="field wide"><label for="duel-agent-a">Jugador A</label><select id="duel-agent-a"></select></div>
+                <div class="field wide"><label for="duel-agent-b">Jugador B</label><select id="duel-agent-b"></select></div>
+                <div class="field compact"><label for="duel-turns">Turnos</label><input id="duel-turns" type="number" min="10" max="500" value="200" /></div>
+                <div class="field compact"><label for="duel-window">Ventana móvil</label><input id="duel-window" type="number" min="3" max="50" value="15" /></div>
+                <div class="field compact"><label for="duel-seed">Seed</label><input id="duel-seed" type="number" value="42" /></div>
+              </div>
+              <div class="btn-group">
+                <button class="btn btn-primary" id="btn-run-duel">⚔ Ejecutar Duelo</button>
+                <button class="btn btn-secondary" id="btn-swap-duel">⇄</button>
+                <button class="btn btn-secondary btn-sm" id="btn-duel-export-csv">⬇ CSV</button>
+              </div>
+            </div>
+
+            <div class="toolbar hidden" id="duel-rl-params-bar" style="padding:10px 18px;background:#f4fbf5;border-color:#b7dfb9">
+              <div class="controls-row">
+                <strong style="color:#1b5e20;font-size:13px">Hiperparámetros en vivo (RL):</strong>
+                <div class="field compact"><label>$n_0$ <span class="val-mono" id="lbl-duel-n0">2.0</span></label><input id="duel-n0" type="range" min="0.5" max="10" step="0.5" value="2.0" /></div>
+                <div class="field compact"><label>$\lambda$ <span class="val-mono" id="lbl-duel-lam">0.90</span></label><input id="duel-lam" type="range" min="0.50" max="1.00" step="0.01" value="0.90" /></div>
+                <div class="field compact"><label>$\gamma$ <span class="val-mono" id="lbl-duel-gamma">0.90</span></label><input id="duel-gamma" type="range" min="0.10" max="0.98" step="0.01" value="0.90" /></div>
+              </div>
+            </div>
+
+            <!-- Live Voxel Duel Stage synced to Turn Scrubber -->
+            <div id="duel-voxel-stage"></div>
+
+            <!-- Playback & Turn Window -->
+            <div class="card">
+              <div class="playback-bar">
+                <button class="btn btn-primary btn-sm" id="btn-duel-play">▶ Reproducir</button>
+                <button class="btn btn-secondary btn-sm" id="btn-duel-prev">◀ -1</button>
+                <button class="btn btn-secondary btn-sm" id="btn-duel-next">+1 ▶</button>
+                <input id="duel-turn-slider" type="range" min="1" max="200" value="1" />
+                <span class="badge badge-blue" id="duel-turn-counter">t = 1 / 200</span>
+              </div>
+              <div class="muted mb-sm" id="duel-turn-detail">Turno 1</div>
+              <div class="window-strip" id="duel-window-strip"></div>
+              <div id="duel-live-decision-box" class="mb-md"></div>
+              <div class="ribbon-grid" id="duel-ribbon"></div>
+            </div>
+
+            <div class="kpi-grid" id="duel-kpi-grid"></div>
+
+            <!-- Clean Technical Chart Subviews -->
+            <div class="subtabs" id="duel-inner-tabs">
+              <button class="subtab-btn active" data-duelview="charts-main">Puntaje y Modelo Interno</button>
+              <button class="subtab-btn" data-duelview="charts-matrix">Ventaja $\Delta Q_t$ y Matriz $T_t$</button>
+              <button class="subtab-btn" data-duelview="charts-table">Tabla Turno a Turno</button>
+            </div>
+
+            <div id="duelview-charts-main" class="duelview-panel">
+              <div class="grid-2">
+                <article class="chart-card"><div class="chart-card-head"><div><h3>Puntaje Acumulado y Ventana Móvil</h3><div class="chart-note">Clic en cualquier punto para saltar a ese turno</div></div></div><div class="canvas-wrap"><canvas id="cv-duel-scores"></canvas></div></article>
+                <article class="chart-card"><div class="chart-card-head"><div><h3 id="duel-internal-title">Estado Interno del Jugador A</h3><div class="chart-note" id="duel-internal-note">Evolución de probabilidades</div></div></div><div class="canvas-wrap"><canvas id="cv-duel-internal"></canvas></div></article>
+              </div>
+            </div>
+
+            <div id="duelview-charts-matrix" class="duelview-panel hidden">
+              <div class="grid-2">
+                <article class="chart-card"><div class="chart-card-head"><div><h3>Ventaja de Decisión por Estado</h3><div class="chart-note">Los cruces por cero indican mutaciones de política</div></div></div><div class="canvas-wrap"><canvas id="cv-duel-deltaq"></canvas></div></article>
+                <article class="chart-card"><div class="chart-card-head"><div><h3 id="duel-mat-title">Matriz de Transición en el Turno Seleccionado</h3><div class="chart-note" id="duel-mat-note">Actualizada dinámicamente con el deslizador</div></div></div><div class="canvas-wrap"><canvas id="cv-duel-matrix"></canvas></div></article>
+              </div>
+            </div>
+
+            <div id="duelview-charts-table" class="duelview-panel hidden">
+              <div class="card">
+                <div class="table-wrap" style="max-height:380px;overflow-y:auto">
+                  <table class="data-table">
+                    <thead><tr><th>Turno</th><th class="text-center">Jugada $(A, B)$</th><th class="text-right">Pago $A / B$</th><th class="text-right">Media $A$</th><th class="text-right">Media $B$</th><th class="text-center">Política $A$</th><th>Cálculo Interno $A$</th></tr></thead>
+                    <tbody id="tbody-duel-trace"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="subpanel-duel-h2h" class="subpanel">
+            <div class="card">
+              <div class="card-header">
+                <div><h3 class="card-title">Matriz de Enfrentamientos Todos contra Todos ($N \times N$)</h3><p class="card-subtitle">Haz clic en cualquier celda del mapa de calor para abrir ese duelo 1v1</p></div>
+                <div class="btn-group">
+                  <button class="btn btn-secondary btn-sm" id="btn-h2h-preset-paper">Selección Recomendada</button>
+                  <button class="btn btn-primary" id="btn-run-h2h">Calcular Matriz</button>
+                </div>
+              </div>
+              <div class="chip-selector" id="h2h-chip-selector"></div>
+            </div>
+            <div class="card"><div class="canvas-wrap xtall"><canvas id="cv-h2h-heatmap"></canvas></div></div>
+          </div>
+
+          <div id="subpanel-tourn-harper-mega" class="subpanel">
+            <div class="grid-2">
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Ecosistema Harper et al. (41 Estrategias · 10 Semillas)</h3><div class="chart-note">Agentes evolutivos (ANN, FSM, LookerUp, PSO), Zero-Determinant y nuestras 5 generaciones</div></div></div><div class="canvas-wrap xtall"><canvas id="cv-harper-41"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Mega-Torneo General (175 Estrategias)</h3><div class="chart-note">Top 18 + referencias clásicas + evolución de las 5 generaciones</div></div></div><div class="canvas-wrap xtall"><canvas id="cv-mega-175"></canvas></div></article>
+            </div>
+            <div class="grid-2">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Tabla Completa Harper (41)</h3><input id="search-harper" type="text" placeholder="Buscar..." style="max-width:200px" /></div>
+                <div class="table-wrap" style="max-height:330px;overflow-y:auto"><table class="data-table"><thead><tr><th>#</th><th>Estrategia</th><th class="text-right">Media $\pm$ DE</th><th class="text-right">Rank</th></tr></thead><tbody id="tbody-harper"></tbody></table></div>
+              </div>
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Tabla Completa Mega-Torneo (175)</h3><input id="search-mega" type="text" placeholder="Buscar..." style="max-width:200px" /></div>
+                <div class="table-wrap" style="max-height:330px;overflow-y:auto"><table class="data-table"><thead><tr><th>#</th><th>Estrategia</th><th class="text-right">Pts / Ronda</th></tr></thead><tbody id="tbody-mega"></tbody></table></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="subpanel-tourn-live" class="subpanel">
+            <div class="card">
+              <div class="card-header"><div><h3 class="card-title">Ejecutor de Torneos Round-Robin en Vivo</h3><p class="card-subtitle">Compite con tus estrategias incorporadas, las 5 generaciones o ecosistemas clásicos completos</p></div></div>
+              <div class="controls-row mb-md">
+                <div class="field wide"><label for="live-tourn-preset">Ecosistema Base</label><select id="live-tourn-preset"><option value="axelrod1980">Torneo de Axelrod 1980 (+ 15 Clásicas)</option><option value="mini10">Mini-Benchmark Rápido (+ 11 Arquetipos)</option><option value="harper41">Ecosistema Harper et al. (+ 36 Avanzadas)</option><option value="custom">Torneo Libre (Solo marcadas)</option></select></div>
+                <div class="field compact"><label for="live-tourn-turns">Turnos</label><input id="live-tourn-turns" type="number" min="20" max="400" value="200" /></div>
+                <div class="field compact"><label for="live-tourn-nseeds">Semillas</label><select id="live-tourn-nseeds"><option value="1">1 semilla</option><option value="3">3 semillas</option><option value="5" selected>5 semillas</option><option value="10">10 semillas</option></select></div>
+                <button class="btn btn-success" id="btn-start-live-tournament">🏆 Ejecutar Torneo</button>
+              </div>
+              <div class="field"><label>Agentes a inscribir</label><div class="chip-selector" id="live-tourn-chips"></div></div>
+            </div>
+
+            <div class="progress-box hidden" id="live-tourn-progress">
+              <div style="display:flex;justify-content:space-between;font-weight:600;font-size:13px"><span id="live-tourn-msg">Preparando torneo...</span><span class="mono" id="live-tourn-pct">0%</span></div>
+              <div class="progress-track"><div class="progress-fill" id="live-tourn-bar"></div></div>
+            </div>
+
+            <div id="live-tourn-results" class="hidden">
+              <div class="grid-2">
+                <article class="chart-card"><div class="chart-card-head"><div><h3>Ranking Final (Pts/Ronda $\pm$ DE)</h3><div class="chart-note" id="live-tourn-summary-note"></div></div><button class="btn btn-secondary btn-sm" id="btn-export-tourn-csv">⬇ CSV</button></div><div class="canvas-wrap tall"><canvas id="cv-live-ranking"></canvas></div></article>
+                <article class="chart-card"><div class="chart-card-head"><div><h3>Dispersión por Semillas</h3><div class="chart-note">Estabilidad entre realizaciones</div></div></div><div class="canvas-wrap tall"><canvas id="cv-live-boxplot"></canvas></div></article>
+              </div>
+              <div class="card" id="live-tourn-heatmap-card">
+                <div class="card-header"><h3 class="card-title">Mapa de Pagos del Torneo (clic en celda $\to$ Duelo 1v1)</h3></div>
+                <div class="canvas-wrap xtall"><canvas id="cv-live-heatmap"></canvas></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SECTION 8: ESTRATEGIAS Y CÓDIGO -->
+        <!-- =============================================================== -->
+        <section id="tab-studio" class="tab-section">
+          <div class="subtabs">
+            <button class="subtab-btn active" data-subtab="studio-builder">Incorporar Estrategia</button>
+            <button class="subtab-btn" data-subtab="studio-code">Código Fuente</button>
+            <button class="subtab-btn" data-subtab="studio-tests">Pruebas Unitarias</button>
+          </div>
+
+          <div id="subpanel-studio-builder" class="subpanel active">
+            <div class="grid-asymmetric">
+              <div class="card">
+                <div class="card-header"><div><h3 class="card-title">Crear Nueva Estrategia</h3><p class="card-subtitle">Disponible al instante en Juega el Dilema, Duelos 1v1 y Torneos</p></div></div>
+                <div class="subtabs" id="builder-mode-tabs">
+                  <button class="subtab-btn active" data-bmode="visual_mem1">Memoria-1</button>
+                  <button class="subtab-btn" data-bmode="visual_rl">RL MDP</button>
+                  <button class="subtab-btn" data-bmode="visual_gary">Expectimax</button>
+                  <button class="subtab-btn" data-bmode="visual_phase">Rival por Fases</button>
+                  <button class="subtab-btn" data-bmode="python_code">Python</button>
+                </div>
+                <div class="controls-row mb-md">
+                  <div class="field wide"><label for="b-name">Nombre</label><input id="b-name" type="text" value="Mi Estrategia" /></div>
+                  <div class="field compact"><label for="b-color">Color</label><input id="b-color" type="color" value="#0ea5e9" style="height:36px;padding:2px" /></div>
+                </div>
+                <div class="field mb-md"><label for="b-desc">Descripción breve</label><input id="b-desc" type="text" placeholder="Ej. Recíproco con perdón estocástico..." /></div>
+
+                <div id="bpanel-visual_mem1" class="bpanel">
+                  <div class="controls-row mb-sm">
+                    <div class="field compact"><label for="bm1-first">Turno 1</label><select id="bm1-first"><option value="C" selected>Cooperar (C)</option><option value="D">Traicionar (D)</option></select></div>
+                    <div class="btn-group">
+                      <button class="btn btn-secondary btn-sm" data-m1preset="1,0,1,0">TFT</button>
+                      <button class="btn btn-secondary btn-sm" data-m1preset="1,0,0,1">Pavlov</button>
+                      <button class="btn btn-secondary btn-sm" data-m1preset="1,0.33,1,0.1">Generoso</button>
+                      <button class="btn btn-secondary btn-sm" data-m1preset="0.88,0,0.44,0">Extorsión</button>
+                    </div>
+                  </div>
+                  <div class="prob-editor-grid">
+                    <div class="prob-slider-card"><div class="top"><span>$P(C \mid CC)$</span><span class="mono" id="lbl-bm1-cc">1.00</span></div><input id="bm1-cc" type="range" min="0" max="1" step="0.05" value="1" /></div>
+                    <div class="prob-slider-card"><div class="top"><span>$P(C \mid CD)$</span><span class="mono" id="lbl-bm1-cd">0.00</span></div><input id="bm1-cd" type="range" min="0" max="1" step="0.05" value="0" /></div>
+                    <div class="prob-slider-card"><div class="top"><span>$P(C \mid DC)$</span><span class="mono" id="lbl-bm1-dc">1.00</span></div><input id="bm1-dc" type="range" min="0" max="1" step="0.05" value="1" /></div>
+                    <div class="prob-slider-card"><div class="top"><span>$P(C \mid DD)$</span><span class="mono" id="lbl-bm1-dd">0.00</span></div><input id="bm1-dd" type="range" min="0" max="1" step="0.05" value="0" /></div>
+                  </div>
+                </div>
+
+                <div id="bpanel-visual_rl" class="bpanel hidden">
+                  <div class="controls-row">
+                    <div class="field"><label>$n_0$ <span class="val-mono" id="lbl-brl-n0">2.0</span></label><input id="brl-n0" type="range" min="0.5" max="12" step="0.5" value="2.0" /></div>
+                    <div class="field"><label>$\lambda$ <span class="val-mono" id="lbl-brl-lam">0.85</span></label><input id="brl-lam" type="range" min="0.50" max="1.00" step="0.01" value="0.85" /></div>
+                    <div class="field"><label>$\gamma$ <span class="val-mono" id="lbl-brl-gamma">0.90</span></label><input id="brl-gamma" type="range" min="0.10" max="0.98" step="0.01" value="0.90" /></div>
+                    <div class="field"><label for="brl-prior">Prior $T_0$</label><select id="brl-prior"><option value="empirical">Tabla Empírica</option><option value="uniform">Uniforme (0.50)</option></select></div>
+                  </div>
+                </div>
+
+                <div id="bpanel-visual_gary" class="bpanel hidden">
+                  <div class="controls-row">
+                    <div class="field compact"><label for="bgary-h">Horizonte $H$</label><select id="bgary-h"><option value="1">H=1</option><option value="2">H=2</option><option value="3">H=3</option><option value="4" selected>H=4</option></select></div>
+                    <div class="field"><label>$\gamma$ <span class="val-mono" id="lbl-bgary-gamma">0.95</span></label><input id="bgary-gamma" type="range" min="0.50" max="0.98" step="0.01" value="0.95" /></div>
+                    <div class="field"><label for="bgary-markov">Hojas</label><select id="bgary-markov"><option value="true" selected>Markov TFT cerrada</option><option value="false">Sin Markov (h=0)</option></select></div>
+                  </div>
+                </div>
+
+                <div id="bpanel-visual_phase" class="bpanel hidden">
+                  <div class="controls-row">
+                    <div class="field compact"><label for="bph-t1">Fase 1 hasta</label><input id="bph-t1" type="number" value="50" min="5" max="180" /></div>
+                    <div class="field"><label for="bph-m1">Modo F1</label><select id="bph-m1"><option value="C" selected>Coopera (C)</option><option value="D">Traiciona (D)</option><option value="TFT">Tit For Tat</option><option value="Alternator">Alternator</option><option value="Random">Random</option></select></div>
+                    <div class="field compact"><label for="bph-t2">Fase 2 hasta</label><input id="bph-t2" type="number" value="120" min="10" max="195" /></div>
+                    <div class="field"><label for="bph-m2">Modo F2</label><select id="bph-m2"><option value="C">Coopera (C)</option><option value="D" selected>Traiciona (D)</option><option value="TFT">Tit For Tat</option><option value="Alternator">Alternator</option><option value="Random">Random</option></select></div>
+                    <div class="field"><label for="bph-m3">Modo F3</label><select id="bph-m3"><option value="C" selected>Coopera (C)</option><option value="D">Traiciona (D)</option><option value="TFT">Tit For Tat</option><option value="Alternator">Alternator</option><option value="Random">Random</option></select></div>
+                  </div>
+                </div>
+
+                <div id="bpanel-python_code" class="bpanel hidden">
+                  <div class="field mb-sm"><label for="b-py-template">Plantilla de inicio</label><select id="b-py-template"></select></div>
+                  <textarea id="b-py-code" class="code-editor-textarea" spellcheck="false"></textarea>
+                </div>
+
+                <div class="btn-group mt-md">
+                  <button class="btn btn-secondary" id="btn-test-strategy">Probar contra 5 Arquetipos</button>
+                  <button class="btn btn-success" id="btn-save-strategy">Guardar Estrategia</button>
+                </div>
+                <div id="builder-test-output" class="mt-md hidden"></div>
+              </div>
+
+              <div class="card">
+                <div class="card-header"><div><h3 class="card-title">Estrategias Incorporadas</h3><p class="card-subtitle">Envíalas directo a jugar, a un duelo 1v1 o a un torneo</p></div></div>
+                <div id="custom-strategies-list" class="custom-list"><p class="muted">Aún no has guardado estrategias propias.</p></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="subpanel-studio-code" class="subpanel">
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-title">Códigos Ejecutables del Proyecto</h3>
+                  <p class="card-subtitle" id="code-file-desc">Selecciona cualquier archivo Python o el notebook para inspeccionar, ejecutar en vivo o descargar</p>
+                </div>
+                <div class="btn-group">
+                  <button class="btn btn-success btn-sm" id="btn-run-script">▶ Ejecutar en Consola</button>
+                  <button class="btn btn-danger btn-sm hidden" id="btn-stop-script">■ Detener</button>
+                  <button class="btn btn-secondary btn-sm" id="btn-copy-code">Copiar</button>
+                  <button class="btn btn-secondary btn-sm" id="btn-download-code">Descargar</button>
+                </div>
+              </div>
+              <div class="subtabs" id="code-file-tabs"></div>
+              <div class="muted mb-sm mono" id="code-cli-pill" style="background:var(--surface-alt);border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12px"></div>
+
+              <!-- Live Streaming Console Output + Generated Figures -->
+              <div id="script-console-wrap" class="hidden mb-md">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:10px;flex-wrap:wrap">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <strong>Salida en Vivo de Consola</strong>
+                    <span class="badge badge-blue" id="script-status-badge">Ejecutando...</span>
+                    <span class="mono muted" id="script-elapsed">0.0s</span>
+                  </div>
+                  <button class="btn btn-secondary btn-sm" id="btn-clear-console">Ocultar Consola</button>
+                </div>
+                <pre class="code-viewer-pre" id="script-console-pre" style="max-height:280px;background:#091420;border:1px solid #1e3a5f"></pre>
+                <div id="script-images-box" class="grid-2 mt-sm hidden" style="margin-bottom:0"></div>
+              </div>
+
+              <pre class="code-viewer-pre" id="code-viewer-pre"></pre>
+            </div>
+          </div>
+
+          <div id="subpanel-studio-tests" class="subpanel">
+            <div class="card">
+              <div class="card-header">
+                <div><h3 class="card-title">Verificación Automática de Invariantes Matemáticos</h3><p class="card-subtitle">Comprueba normalización de la matriz $8 \times 4$, optimalidad de Bellman, equivalencia $\lambda=1$ y adaptación no estacionaria</p></div>
+                <button class="btn btn-success" id="btn-run-unittests">▶ Ejecutar Pruebas en Vivo</button>
+              </div>
+              <div id="unittest-results-box"><p class="muted">Pulsa el botón para ejecutar la suite de pruebas sobre el motor real.</p></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="chart-tooltip"></div>
+  <div id="toast-container"></div>
+
+  <script src="/static/charts.js"></script>
+  <script src="/static/voxel.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
