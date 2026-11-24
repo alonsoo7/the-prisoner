@@ -23,7 +23,6 @@ from ipd_mdp import (
     solve_bellman,
 )
 from agents import (
-    BayesianFrequencyRLAgent,
     EmpiricalPolicyAgent,
     ForgettingTransitionRLAgent,
 )
@@ -32,10 +31,10 @@ from plot_learning import CooperateThenDefect, ThreePhaseRival
 STATES_TUP = [(C, C), (C, D), (D, C), (D, D)]
 
 
-class RulitoMiope(axl.Player):
-    """Etapa I: Agente frecuentista miope (gamma = 0) con exploración alternante de 10 turnos."""
+class CloudMiope(axl.Player):
+    """Etapa I (Taller IV, Sección 7 — Cloud): Frecuentista miope (gamma = 0) con exploración alternante de 10 turnos."""
 
-    name = "1. Rulito (Miope g=0)"
+    name = "1. Cloud (Miope g=0)"
     classifier = {
         "memory_depth": float("inf"),
         "stochastic": False,
@@ -82,7 +81,7 @@ class RulitoMiope(axl.Player):
             if self.record_trace:
                 self.trace_log.append(
                     {
-                        "kind": "rulito",
+                        "kind": "cloud",
                         "p_state": self._p_vec(),
                         "q_c": 1.5,
                         "q_d": 3.0,
@@ -116,7 +115,7 @@ class RulitoMiope(axl.Player):
             pol = [ACTION_C if d >= 0 else ACTION_D for d in dq]
             self.trace_log.append(
                 {
-                    "kind": "rulito",
+                    "kind": "cloud",
                     "p_state": p_vec,
                     "q_c": float(q_c),
                     "q_d": float(q_d),
@@ -128,10 +127,10 @@ class RulitoMiope(axl.Player):
         return act
 
 
-class CloudOneStep(axl.Player):
-    """Etapa II: Agente 1-Step Lookahead (gamma = 0.90) con transición no condicionada P(O_t | s_{t-1})."""
+class RulitoBellman(axl.Player):
+    """Etapa II (Taller IV, Sección 8 — Rulito): Agente 1-Step Lookahead (gamma = 0.90) con transición no condicionada P(O_t | s_{t-1})."""
 
-    name = "2. Cloud (1-Step g=0.90)"
+    name = "2. Rulito (1-Step g=0.90)"
     classifier = {
         "memory_depth": float("inf"),
         "stochastic": False,
@@ -185,7 +184,7 @@ class CloudOneStep(axl.Player):
             if self.record_trace:
                 self.trace_log.append(
                     {
-                        "kind": "cloud",
+                        "kind": "rulito",
                         "p_state": [0.5, 0.5, 0.5, 0.5],
                         "q_c": 4.2,
                         "q_d": 5.7,
@@ -219,7 +218,7 @@ class CloudOneStep(axl.Player):
                 pol.append(ACTION_C if qc_s >= qd_s else ACTION_D)
             self.trace_log.append(
                 {
-                    "kind": "cloud",
+                    "kind": "rulito",
                     "p_state": p_vec,
                     "q_c": q_c,
                     "q_d": q_d,
@@ -233,11 +232,11 @@ class CloudOneStep(axl.Player):
 
 class ExpectimaxMarkovAgent(axl.Player):
     """
-    Etapa III: Agente Expectimax + A* (Gary, H=4, 256 hojas) con heurística terminal de
+    Etapa III: Agente Expectimax (Gary, H=2, 16 hojas, gamma=0.90) con heurística terminal de
     Cadena de Markov Bellman cerrada (I - gamma P_TFT)^{-1} P_TFT R.
     """
 
-    name = "3. Expectimax H=4 + Markov"
+    name = "3. Expectimax H=2 + Markov"
     classifier = {
         "memory_depth": float("inf"),
         "stochastic": False,
@@ -251,8 +250,8 @@ class ExpectimaxMarkovAgent(axl.Player):
 
     def __init__(
         self,
-        horizon: int = 4,
-        gamma: float = 0.95,
+        horizon: int = 2,
+        gamma: float = 0.90,
         use_markov_leaves: bool = True,
         player_name: str | None = None,
         record_trace: bool = False,
@@ -373,6 +372,56 @@ class ExpectimaxMarkovAgent(axl.Player):
         det = self._evaluate_root_detailed(state, E, leaf_h)
         return det["f_c"], det["f_d"]
 
+    def _build_h2_tree_snapshot(self, state, E: dict, leaf_h: dict) -> dict[str, Any]:
+        """Build complete explicit H=2 Expectimax tree (root -> 4 depth-1 MAX -> 16 leaves)."""
+        st_lbl = lambda tup: f"{tup[0].name}{tup[1].name}"
+        r_map = {(C, C): 3.0, (C, D): 0.0, (D, C): 5.0, (D, D): 1.0}
+        p0 = float(E[state])
+        norm = (1.0 - self.gamma) if self.use_markov_leaves else (1.0 - self.gamma) / max(1e-9, 1.0 - self.gamma**2)
+
+        level1_nodes = []
+        for s1 in STATES_TUP:
+            r1 = r_map[s1]
+            p1 = float(E[s1])
+            leaves = []
+            f_exact = []
+            for s2 in STATES_TUP:
+                r2 = r_map[s2]
+                g_val = r1 + self.gamma * r2
+                h_val = float(leaf_h[s2]) if self.use_markov_leaves else 0.0
+                f_val = norm * (g_val + h_val)
+                f_exact.append(f_val)
+                leaves.append(
+                    {
+                        "s2": st_lbl(s2),
+                        "g": round(float(g_val), 2),
+                        "h": round(float(h_val), 2),
+                        "f": round(float(f_val), 3),
+                    }
+                )
+            exp_c = p1 * f_exact[0] + (1.0 - p1) * f_exact[1]
+            exp_d = p1 * f_exact[2] + (1.0 - p1) * f_exact[3]
+            chosen_l1 = "C" if exp_c >= exp_d else "D"
+            val_l1 = exp_c if exp_c >= exp_d else exp_d
+            level1_nodes.append(
+                {
+                    "s1": st_lbl(s1),
+                    "r1": int(r1),
+                    "p_c": round(p1, 3),
+                    "exp_c": round(float(exp_c), 3),
+                    "exp_d": round(float(exp_d), 3),
+                    "chosen": chosen_l1,
+                    "val": round(float(val_l1), 3),
+                    "leaves": leaves,
+                }
+            )
+
+        return {
+            "root_state": st_lbl(state),
+            "p_c": round(p0, 3),
+            "level1": level1_nodes,
+        }
+
     def _snapshot_counts(self) -> list[list[int]]:
         return [[int(self.counts[s][C]), int(self.counts[s][D])] for s in STATES_TUP]
 
@@ -425,6 +474,7 @@ class ExpectimaxMarkovAgent(axl.Player):
                 dqs.append(round(float(fc_s - fd_s), 4))
                 pol.append(ACTION_C if fc_s >= fd_s else ACTION_D)
             st_lbl = lambda tup: f"{tup[0].name}{tup[1].name}" if tup is not None else None
+            tree_h2 = self._build_h2_tree_snapshot(self.last_state, E_t, leaf_h) if self.horizon == 2 else None
             self.trace_log.append(
                 {
                     "kind": "gary",
@@ -448,6 +498,7 @@ class ExpectimaxMarkovAgent(axl.Player):
                     "chosen": chosen.name,
                     "delta_q_state": dqs,
                     "policy": pol,
+                    "tree_h2": tree_h2,
                 }
             )
         return chosen
@@ -570,22 +621,39 @@ def compile_custom_python_strategy(code: str, display_name: str | None = None) -
     Compila código Python enviado por el usuario buscando una subclase de axelrod.Player.
     Bloquea imports peligrosos de sistema/red para mantener una ejecución limpia y segura.
     """
-    forbidden_tokens = [
-        "import os",
-        "import sys",
-        "import subprocess",
-        "import socket",
-        "import shutil",
-        "__import__",
-        "open(",
-        "eval(",
-        "exec(",
-        "pathlib",
-    ]
-    lowered = code.lower()
-    for tok in forbidden_tokens:
-        if tok in lowered:
-            raise ValueError(f"Instrucción no permitida en el editor de estrategias: '{tok}'")
+    import ast
+
+    if len(code) > 16384:
+        raise ValueError("Código demasiado extenso (máximo 16 KB).")
+
+    try:
+        tree = ast.parse(code, mode="exec")
+    except SyntaxError as exc:
+        raise ValueError(f"Error de sintaxis en la estrategia: {exc}") from exc
+
+    forbidden_names = {
+        "__import__", "__builtins__", "__loader__", "__spec__", "__subclasses__",
+        "eval", "exec", "compile", "open", "getattr", "setattr", "delattr",
+        "hasattr", "globals", "locals", "vars", "dir", "type", "object",
+        "breakpoint", "input", "memoryview", "classmethod", "staticmethod",
+    }
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            raise ValueError("Los imports no están permitidos; axl, np, math y random ya están disponibles.")
+        if isinstance(node, ast.Name) and node.id in forbidden_names:
+            raise ValueError(f"Identificador restringido no permitido: '{node.id}'")
+        if isinstance(node, ast.Attribute):
+            if node.attr in {"format", "format_map"}:
+                raise ValueError(f"Método restringido no permitido: '{node.attr}'")
+            if node.attr.startswith("__"):
+                is_super_init = (
+                    node.attr == "__init__"
+                    and isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Name)
+                    and node.value.func.id == "super"
+                )
+                if not is_super_init:
+                    raise ValueError(f"Acceso a atributo restringido no permitido: '{node.attr}'")
 
     safe_builtins = {
         "abs": abs,
@@ -611,9 +679,6 @@ def compile_custom_python_strategy(code: str, display_name: str | None = None) -
         "zip": zip,
         "super": super,
         "isinstance": isinstance,
-        "hasattr": hasattr,
-        "getattr": getattr,
-        "setattr": setattr,
         "__build_class__": __build_class__,
         "Exception": Exception,
         "ValueError": ValueError,
@@ -641,7 +706,6 @@ def compile_custom_python_strategy(code: str, display_name: str | None = None) -
         "build_mdp_transition_matrix": build_mdp_transition_matrix,
         "EmpiricalPolicyAgent": EmpiricalPolicyAgent,
         "ForgettingTransitionRLAgent": ForgettingTransitionRLAgent,
-        "BayesianFrequencyRLAgent": BayesianFrequencyRLAgent,
     }
 
     exec(compile(code, "<custom_strategy>", "exec"), namespace)  # noqa: S102
@@ -656,7 +720,6 @@ def compile_custom_python_strategy(code: str, display_name: str | None = None) -
             axl.Player,
             EmpiricalPolicyAgent,
             ForgettingTransitionRLAgent,
-            BayesianFrequencyRLAgent,
         )
         and getattr(obj, "__module__", "") != "axelrod.player"
     ]
@@ -668,8 +731,10 @@ def compile_custom_python_strategy(code: str, display_name: str | None = None) -
     final_name = display_name.strip() if display_name and display_name.strip() else str(inst.name)
 
     # Ensure clone() works cleanly with no-arg init and preserves display_name
+    import functools
     orig_init = cls.__init__
 
+    @functools.wraps(orig_init)
     def _wrapped_init(self, *args, **kwargs):
         orig_init(self, *args, **kwargs)
         self.name = final_name
@@ -809,7 +874,7 @@ PYTHON_TEMPLATES: dict[str, dict[str, str]] = {
             eta = 1.0 / self.n[key]
             self.p[key] = (1.0 - eta) * self.p[key] + eta * y
 
-        bellman = solve_bellman(self.p, gamma=self.gamma, tol=1e-5, max_iter=35)
+        bellman = solve_bellman(self.p, gamma=self.gamma, tol=1e-6, max_iter=2000)
         curr_s = STATE_MAP[(self.history[-1], opponent.history[-1])]
         return C if bellman.policy[curr_s] == ACTION_C else D
 ''',

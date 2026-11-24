@@ -22,3 +22,7 @@ venv/
 # OS / Editor
 .DS_Store
 Thumbs.db
+
+# Local web session storage
+.data/
+*.sqlite

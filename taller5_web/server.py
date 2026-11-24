@@ -21,14 +21,18 @@ ROOT_DIR = APP_DIR.parent
 if str(CORE_DIR) not in sys.path:
     sys.path.insert(0, str(CORE_DIR))
 
+import session_store
+
 from engine import (
     ALLOWED_OUTPUT_IMAGES,
+    ScriptRunLimit,
     build_strategy_catalog,
     compute_mdp_payload,
     delete_custom_strategy,
     get_bootstrap_payload,
     get_default_frequency_table,
     get_script_job,
+    get_script_output,
     get_source_code_bundle,
     get_tournament_job,
     register_custom_strategy,
@@ -63,12 +67,14 @@ class Taller5Handler(BaseHTTPRequestHandler):
         # Concise server logging
         sys.stderr.write(f"[Taller5Web] {self.address_string()} - {format % args}\n")
 
-    def _send_json(self, data: object, status: int = HTTPStatus.OK) -> None:
+    def _send_json(self, data: object, status: int = HTTPStatus.OK, retry_after: int | None = None) -> None:
         raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
+        if retry_after is not None:
+            self.send_header("Retry-After", str(retry_after))
         self.end_headers()
         self.wfile.write(raw)
 
@@ -89,7 +95,10 @@ class Taller5Handler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(raw)))
-        self.send_header("Cache-Control", "no-cache")
+        if path.suffix in (".html", ".js", ".css"):
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        else:
+            self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(raw)
 
@@ -97,10 +106,13 @@ class Taller5Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0:
             return {}
+        if length > 1_048_576:
+            raise ValueError("Payload demasiado grande (máximo 1 MB)")
         raw = self.rfile.read(length)
         return json.loads(raw.decode("utf-8"))
 
     def do_GET(self) -> None:
+        session_store.bind(self.headers.get("X-IPD-Session",""))
         global _BOOTSTRAP_CACHE
         parsed = urlparse(self.path)
         path = parsed.path
@@ -109,8 +121,11 @@ class Taller5Handler(BaseHTTPRequestHandler):
             if path == "/" or path == "/index.html":
                 self._send_file(STATIC_DIR / "index.html")
                 return
-            if path == "/paper.pdf":
-                self._send_file(ROOT_DIR / "taller5_evolucion_y_aprendizaje.pdf")
+            if path == "/taller.pdf":
+                self._send_file(ROOT_DIR / "taller.pdf")
+                return
+            if path == "/gary.pdf":
+                self._send_file(ROOT_DIR / "gary_expectimax.pdf")
                 return
             if path == "/api/download-notebook":
                 nb_path = ROOT_DIR / "evolucion_agentes_taller5.ipynb"
@@ -130,7 +145,7 @@ class Taller5Handler(BaseHTTPRequestHandler):
                 if img_name not in ALLOWED_OUTPUT_IMAGES:
                     self._send_json({"error": "Imagen no autorizada"}, status=HTTPStatus.FORBIDDEN)
                     return
-                self._send_file(ROOT_DIR / img_name)
+                self._send_file(get_script_output(img_name))
                 return
             if path.startswith("/api/scripts/status/"):
                 job_id = path[len("/api/scripts/status/") :].strip("/")
@@ -143,18 +158,14 @@ class Taller5Handler(BaseHTTPRequestHandler):
             if path.startswith("/static/"):
                 rel = path[len("/static/") :]
                 target = (STATIC_DIR / rel).resolve()
-                if not str(target).startswith(str(STATIC_DIR.resolve())):
+                if not target.is_relative_to(STATIC_DIR.resolve()):
                     self._send_json({"error": "Acceso denegado"}, status=HTTPStatus.FORBIDDEN)
                     return
                 self._send_file(target)
                 return
 
             if path == "/api/bootstrap":
-                if _BOOTSTRAP_CACHE is None:
-                    _BOOTSTRAP_CACHE = get_bootstrap_payload()
-                else:
-                    _BOOTSTRAP_CACHE["catalog"] = build_strategy_catalog()
-                self._send_json(_BOOTSTRAP_CACHE)
+                self._send_json({**_BOOTSTRAP_CACHE, "catalog": build_strategy_catalog()})
                 return
 
             if path == "/api/catalog":
@@ -177,11 +188,16 @@ class Taller5Handler(BaseHTTPRequestHandler):
             self._send_json({"error": f"Ruta GET desconocida: {path}"}, status=HTTPStatus.NOT_FOUND)
         except Exception as exc:
             self._send_json(
-                {"error": str(exc), "traceback": traceback.format_exc()},
+                {"error": "No se pudo completar la solicitud."},
                 status=HTTPStatus.INTERNAL_SERVER_ERROR,
             )
 
     def do_POST(self) -> None:
+        session_store.bind(self.headers.get("X-IPD-Session",""))
+        if not session_store.owner.get():
+            self.close_connection = True
+            self._send_json({"error":"Recarga la página para iniciar la sesión."}, status=HTTPStatus.FORBIDDEN)
+            return
         parsed = urlparse(self.path)
         path = parsed.path
 
@@ -191,7 +207,6 @@ class Taller5Handler(BaseHTTPRequestHandler):
             if path == "/api/mdp":
                 res = compute_mdp_payload(
                     gamma=float(body.get("gamma", 0.90)),
-                    laplace_alpha=float(body.get("laplace_alpha", 0.0)),
                     initial_count=float(body.get("initial_count", 2.0)),
                     forgetting_factor=float(body.get("forgetting_factor", 0.90)),
                     custom_p_coop=body.get("custom_p_coop"),
@@ -240,8 +255,8 @@ class Taller5Handler(BaseHTTPRequestHandler):
 
             if path == "/api/gary-dynamics":
                 res = run_gary_dynamics(
-                    horizon=int(body.get("horizon", 4)),
-                    gamma=float(body.get("gamma", 0.95)),
+                    horizon=int(body.get("horizon", 2)),
+                    gamma=float(body.get("gamma", 0.90)),
                     rival_id=str(body.get("rival_id", "axl_FirstByJoss")),
                     turns=int(body.get("turns", 200)),
                     seed=int(body.get("seed", 42)),
@@ -264,8 +279,8 @@ class Taller5Handler(BaseHTTPRequestHandler):
 
             if path == "/api/h2h":
                 sids = body.get("strategy_ids") or [
-                    "gen1_rulito",
-                    "gen2_cloud",
+                    "gen1_cloud",
+                    "gen2_rulito",
                     "gen3_gary",
                     "gen4_base",
                     "gen5_rl",
@@ -299,7 +314,6 @@ class Taller5Handler(BaseHTTPRequestHandler):
 
             if path == "/api/strategies":
                 res = register_custom_strategy(body)
-                _invalidate_bootstrap()
                 self._send_json(res)
                 return
 
@@ -336,25 +350,32 @@ class Taller5Handler(BaseHTTPRequestHandler):
                 return
 
             self._send_json({"error": f"Ruta POST desconocida: {path}"}, status=HTTPStatus.NOT_FOUND)
+        except ScriptRunLimit as exc:
+            status = HTTPStatus.CONFLICT if exc.retry_after is None else HTTPStatus.TOO_MANY_REQUESTS
+            self._send_json({"error": str(exc)}, status=status, retry_after=exc.retry_after)
         except Exception as exc:
             self._send_json(
-                {"error": str(exc), "traceback": traceback.format_exc()},
+                {"error": "No se pudo completar la solicitud."},
                 status=HTTPStatus.BAD_REQUEST,
             )
 
     def do_DELETE(self) -> None:
+        session_store.bind(self.headers.get("X-IPD-Session",""))
+        if not session_store.owner.get():
+            self.close_connection = True
+            self._send_json({"error":"Recarga la página para iniciar la sesión."}, status=HTTPStatus.FORBIDDEN)
+            return
         parsed = urlparse(self.path)
         path = parsed.path
         try:
             if path.startswith("/api/strategies/"):
                 cid = path[len("/api/strategies/") :].strip("/")
                 res = delete_custom_strategy(cid)
-                _invalidate_bootstrap()
                 self._send_json(res)
                 return
             self._send_json({"error": f"Ruta DELETE desconocida: {path}"}, status=HTTPStatus.NOT_FOUND)
         except Exception as exc:
-            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            self._send_json({"error": "Solicitud no válida."}, status=HTTPStatus.BAD_REQUEST)
 
 
 def main() -> None:
@@ -364,10 +385,11 @@ def main() -> None:
     args = parser.parse_args()
 
     print("[Taller5Web] Pre-calentando tabla empírica MDP (N=173,130 transiciones)...", flush=True)
-    freq = get_default_frequency_table(0.0)
+    freq = get_default_frequency_table()
     print(f"[Taller5Web] Tabla MDP lista ({freq.total_transitions:,} transiciones).", flush=True)
 
     global _BOOTSTRAP_CACHE
+    session_store.initialize()
     _BOOTSTRAP_CACHE = get_bootstrap_payload()
     print("[Taller5Web] Datos iniciales y benchmarks del paper cacheados en RAM.", flush=True)
 

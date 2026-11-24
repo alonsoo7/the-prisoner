@@ -27,12 +27,11 @@
     axl_Alternator: { tunic: "#0284c7", pants: "#991b1b", skin: "#f5d1b6", hair: "#334155", hat: "split", hatCol: "#22c55e", accent: "#ef4444", badge: "Cíclica · C-D-C-D" },
     rival_switch_50: { tunic: "#b91c1c", pants: "#166534", skin: "#f5d1b6", hair: "#1e293b", hat: "split", hatCol: "#16a34a", accent: "#dc2626", badge: "No Estacionaria C→D" },
     rival_3phase: { tunic: "#7e22ce", pants: "#1e293b", skin: "#f5d1b6", hair: "#4c1d95", hat: "crown_purple", hatCol: "#a855f7", accent: "#38bdf8", badge: "3 Fases C−D−C" },
-    gen1_rulito: { species: "fiorino_canary", tunic: "#facc15", pants: "#ca8a04", skin: "#fde047", hair: "#a16207", hat: "fiorino", hatCol: "#fef08a", accent: "#fb923c", badge: "Gen 1 · Canario Fiorino" },
-    gen2_cloud: { species: "budgie_blue", tunic: "#38bdf8", pants: "#0284c7", skin: "#ffffff", hair: "#e2e8f0", hat: "budgie_b", hatCol: "#38bdf8", accent: "#0ea5e9", badge: "Gen 2 · Periquito Blanco/Azul" },
-    gen3_gary: { species: "black_dog", tunic: "#1e293b", pants: "#0f172a", skin: "#1e293b", hair: "#0f172a", hat: "dog_ears", hatCol: "#0f172a", accent: "#ffffff", badge: "Gen 3 · Perro Negro/Blanco" },
+    gen1_cloud: { species: "budgie_blue", tunic: "#38bdf8", pants: "#0284c7", skin: "#ffffff", hair: "#e2e8f0", hat: "budgie_b", hatCol: "#38bdf8", accent: "#0ea5e9", badge: "Gen 1 · Cloud (Miope γ=0)" },
+    gen2_rulito: { species: "fiorino_canary", tunic: "#facc15", pants: "#ca8a04", skin: "#fde047", hair: "#a16207", hat: "fiorino", hatCol: "#fef08a", accent: "#fb923c", badge: "Gen 2 · Rulito (1-Step γ=0.90)" },
+    gen3_gary: { species: "black_dog", tunic: "#1e293b", pants: "#0f172a", skin: "#1e293b", hair: "#0f172a", hat: "dog_ears", hatCol: "#0f172a", accent: "#ffffff", badge: "Gen 3 · Gary (Perro Negro/Blanco)" },
     gen4_base: { tunic: "#1565c0", pants: "#0f253c", skin: "#f5d2b8", hair: "#1e3a8a", hat: "blueprint", hatCol: "#38bdf8", accent: "#93c5fd", badge: "Gen 4 · Base CDDC" },
     gen5_rl: { species: "budgie_green", tunic: "#22c55e", pants: "#15803d", skin: "#fde047", hair: "#16a34a", hat: "budgie_g", hatCol: "#22c55e", accent: "#facc15", badge: "Gen 5 · Mitcha (Periquito Verde)" },
-    gen6_jacinto: { species: "hyacinth_macaw", tunic: "#1d4ed8", pants: "#1e3a8a", skin: "#1d4ed8", hair: "#1e40af", hat: "macaw", hatCol: "#facc15", accent: "#facc15", badge: "Gen 6 · Jacinto (Guacamayo)" },
   };
 
   function getSkin(id, fallbackColor) {
@@ -110,7 +109,7 @@
 
   /**
    * Render custom blocky voxel animal characters (Fiorino Canary, Blue/White Budgie,
-   * Black & White Short-Haired Dog, Green Budgie, Hyacinth Macaw) in crisp pixel/voxel blocks.
+   * Black & White Short-Haired Dog, Green Budgie) in crisp pixel/voxel blocks.
    */
   function renderAnimalVoxelAvatar(sk, opts) {
     const side = opts.side || "left";
@@ -171,17 +170,6 @@
           <rect x="37" y="32" width="6" height="5" fill="#fb923c" stroke="#0f172a" stroke-width="1.3"/>
           <rect x="29" y="35" width="3" height="3" fill="#0f172a"/>
           <rect x="48" y="35" width="3" height="3" fill="#0f172a"/>`;
-      } else if (sp === "hyacinth_macaw") {
-        // Hyacinth macaw (Jacinto): cobalt blue + yellow eye rings + yellow base of large black beak
-        inner = `
-          <rect x="25" y="17" width="30" height="27" fill="#1d4ed8" stroke="#0f172a" stroke-width="2"/>
-          <rect x="28" y="11" width="24" height="6" fill="#2563eb" stroke="#0f172a" stroke-width="1.5"/>
-          <rect x="28" y="24" width="8" height="7" fill="#facc15"/>
-          <rect x="44" y="24" width="8" height="7" fill="#facc15"/>
-          <rect x="30" y="26" width="4" height="3" fill="#0f172a"/>
-          <rect x="46" y="26" width="4" height="3" fill="#0f172a"/>
-          <rect x="34" y="35" width="12" height="5" fill="#facc15"/>
-          <rect x="35" y="31" width="10" height="9" fill="#0f172a"/>`;
       }
       return `<svg viewBox="18 6 44 42" width="${size}" height="${size}" class="voxel-head-svg" shape-rendering="crispEdges">${inner}</svg>`;
     }
@@ -304,26 +292,6 @@
         ${mood === "mad" ? '<rect x="29" y="23" width="6" height="2" fill="#991b1b"/><rect x="45" y="23" width="6" height="2" fill="#991b1b"/>' : ""}
         <rect x="37" y="29" width="6" height="3" fill="#38bdf8"/>
         <rect x="37" y="32" width="6" height="5" fill="#fb923c" stroke="#0f172a" stroke-width="1.3"/>`;
-    } else if (sp === "hyacinth_macaw") {
-      // Hyacinth Macaw (Jacinto)
-      bodyAndHead = `
-        <rect x="34" y="73" width="12" height="20" fill="#1e3a8a" stroke="#0f172a" stroke-width="1.5"/>
-        <rect x="29" y="73" width="5" height="19" fill="#475569" stroke="#0f172a" stroke-width="1.4"/>
-        <rect x="46" y="73" width="5" height="19" fill="#475569" stroke="#0f172a" stroke-width="1.4"/>
-        <rect x="25" y="91" width="12" height="5" fill="#334155" stroke="#0f172a" stroke-width="1.4"/>
-        <rect x="43" y="91" width="12" height="5" fill="#334155" stroke="#0f172a" stroke-width="1.4"/>
-        <rect x="25" y="44" width="30" height="30" fill="#1d4ed8" stroke="#0f172a" stroke-width="2"/>
-        <rect x="31" y="47" width="18" height="22" fill="#2563eb"/>
-        ${armsAndSign}
-        <rect x="25" y="17" width="30" height="27" fill="#1d4ed8" stroke="#0f172a" stroke-width="2"/>
-        <rect x="28" y="11" width="24" height="6" fill="#2563eb" stroke="#0f172a" stroke-width="1.5"/>
-        <rect x="28" y="24" width="8" height="7" fill="#facc15"/>
-        <rect x="44" y="24" width="8" height="7" fill="#facc15"/>
-        <rect x="30" y="26" width="4" height="3" fill="#0f172a"/>
-        <rect x="46" y="26" width="4" height="3" fill="#0f172a"/>
-        ${mood === "mad" ? '<rect x="29" y="21" width="6" height="2" fill="#ef4444"/><rect x="45" y="21" width="6" height="2" fill="#ef4444"/>' : ""}
-        <rect x="34" y="35" width="12" height="5" fill="#facc15"/>
-        <rect x="35" y="31" width="10" height="9" fill="#0f172a"/>`;
     }
 
     const vb = isLeft ? "4 0 92 104" : "-16 0 92 104";

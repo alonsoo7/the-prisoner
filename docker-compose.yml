@@ -1,0 +1,30 @@
+services:
+  taller5-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: taller5-web:latest
+    container_name: taller5-web
+    ports:
+      - "127.0.0.1:8055:8055"
+    volumes:
+      - ipd_sessions:/var/lib/ipd-session
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 1536m
+    cpus: "1.5"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8055/api/catalog', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+volumes:
+  ipd_sessions:

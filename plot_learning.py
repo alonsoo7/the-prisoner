@@ -186,27 +186,28 @@ def main() -> None:
         rival_runs["Alternator"][0], rival_runs["Alternator"][1], rival_runs["Alternator"][2]
     )
 
-    # Build 2x2 learning visualization
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    # Build compact 1x4 horizontal learning visualization
+    fig, axes = plt.subplots(1, 4, figsize=(16.2, 3.85))
     fig.suptitle(
-        f"Aprendizaje Online con Contador Efectivo y Factor de Olvido (n0={initial_count})",
-        fontsize=13,
+        f"Aprendizaje Online de Mitcha con Contador Efectivo y Factor de Olvido (n0={initial_count}, reset_model() por enfrentamiento)",
+        fontsize=11.3,
         fontweight="bold",
+        y=1.02,
     )
 
     lam_colors = {0.70: "#00897b", 0.85: "#2e7d32", 0.90: "#1565c0", 1.0: "#8e24aa"}
 
     # Panel 1: P_t(C | DD, C) vs Defector for different forgetting factors
-    ax = axes[0, 0]
+    ax = axes[0]
     t35 = np.arange(1, 36)
-    ann_offsets = {0.70: (-24, -12), 0.85: (-24, -14), 0.90: (9, -2), 1.0: (6, 5)}
+    ann_offsets = {0.70: (-20, -14), 0.85: (-24, 5), 0.90: (8, -6), 1.0: (7, 6)}
     for lam in lambda_compare:
         agent, _ = defector_runs[lam]
         p_dd_c = [snap["probs"][(3, ACTION_C)] for snap in agent.trace_log[:35]]
         pol_dd = [snap["policy"][3] for snap in agent.trace_log[:35]]
         color = lam_colors[lam]
-        lbl = f"lam = {lam:.2f}" + (" (sin olvido)" if lam == 1.0 else f" (eta_inf={1-lam:.2f})")
-        ax.plot(t35, p_dd_c, label=lbl, color=color, linewidth=2)
+        lbl = f"lam={lam:.2f}" + (" (sin olvido)" if lam == 1.0 else f" (eta_inf={1-lam:.2f})")
+        ax.plot(t35, p_dd_c, label=lbl, color=color, linewidth=1.8)
         first_d = next((idx for idx, act in enumerate(pol_dd) if act == ACTION_D), None)
         if first_d is not None:
             ax.scatter(
@@ -214,7 +215,7 @@ def main() -> None:
                 p_dd_c[first_d],
                 color=color,
                 marker="*",
-                s=130,
+                s=105,
                 zorder=5,
                 edgecolor="black",
             )
@@ -223,63 +224,63 @@ def main() -> None:
                 (t35[first_d], p_dd_c[first_d]),
                 textcoords="offset points",
                 xytext=ann_offsets[lam],
-                fontsize=8,
+                fontsize=7.3,
                 color=color,
                 fontweight="bold",
             )
-    ax.set_xlabel("Turno (t)")
-    ax.set_ylabel("P_t(O_t = C | DD, C)")
-    ax.set_title("1. Rapidez de ajuste vs Defector (estrella = 1er cambio a D)")
+    ax.set_xlabel("Turno (t)", fontsize=8.5)
+    ax.set_ylabel("P_t(O_t = C | DD, C)", fontsize=8.5)
+    ax.set_title("1. Ajuste vs Defector (* = 1er cambio a D)", fontsize=9.2, fontweight="bold")
     ax.set_ylim(0.0, 0.30)
-    ax.legend(fontsize=8)
+    ax.legend(fontsize=6.9, loc="upper right")
     ax.grid(alpha=0.3)
 
     # Panel 2: Adaptation to a mid-match regime switch (Cooperate 50 -> Defect 150)
-    ax = axes[0, 1]
+    ax = axes[1]
     t200 = np.arange(1, 201)
     ax.plot(
         t200,
         fixed_switch_scores,
-        label=f"Politica Fija CDDC (final {fixed_switch_scores[-1]:.3f})",
+        label=f"Base CDDC ({fixed_switch_scores[-1]:.3f})",
         color="#d32f2f",
         linestyle="--",
-        linewidth=1.8,
+        linewidth=1.7,
     )
     for lam in lambda_compare:
         _, scores = switch_runs[lam]
-        lbl = f"lam={lam:.2f} (final {scores[-1]:.3f})"
-        ax.plot(t200, scores, label=lbl, color=lam_colors[lam], linewidth=1.9)
-    ax.axvline(50, color="black", linestyle=":", linewidth=1.2, label="Cambio rival C -> D (t=50)")
-    ax.set_xlabel("Turno (t)")
-    ax.set_ylabel("Puntos acumulados / ronda")
-    ax.set_title("2. Adaptacion ante cambio de estrategia del rival (C -> D en t=50)")
+        lbl = f"lam={lam:.2f} ({scores[-1]:.3f})"
+        ax.plot(t200, scores, label=lbl, color=lam_colors[lam], linewidth=1.8)
+    ax.axvline(50, color="black", linestyle=":", linewidth=1.1, label="Cambio C->D (t=50)")
+    ax.set_xlabel("Turno (t)", fontsize=8.5)
+    ax.set_ylabel("Pts acumulados / ronda", fontsize=8.5)
+    ax.set_title("2. Cambio de estrategia C -> D (t=50)", fontsize=9.2, fontweight="bold")
     ax.set_ylim(0.8, 3.15)
-    ax.legend(fontsize=8, loc="lower left")
+    ax.legend(fontsize=6.8, loc="lower left", ncol=2)
     ax.grid(alpha=0.3)
 
     # Panel 3: What (n0=2.0, lambda=0.90) learns across 4 archetypes
-    ax = axes[1, 0]
+    ax = axes[2]
     t60 = np.arange(1, 61)
     curves = [
-        ("vs Cooperator: P(C | CC, C)", "Cooperator", (0, ACTION_C), "#2e7d32", "-"),
-        ("vs Alternator: P(C | CD, D)", "Alternator", (1, ACTION_D), "#0277bd", "-"),
-        ("vs Alternator: P(C | DC, C)", "Alternator", (2, ACTION_C), "#0277bd", "--"),
-        ("vs Random: P(C | CC, C)", "Random", (0, ACTION_C), "#ef6c00", "-"),
-        ("vs Defector: P(C | DD, C)", "Defector", (3, ACTION_C), "#c62828", "-"),
+        ("Coop: P(C|CC,C)", "Cooperator", (0, ACTION_C), "#2e7d32", "-"),
+        ("Alt: P(C|CD,D)", "Alternator", (1, ACTION_D), "#0277bd", "-"),
+        ("Alt: P(C|DC,C)", "Alternator", (2, ACTION_C), "#0277bd", "--"),
+        ("Rand: P(C|CC,C)", "Random", (0, ACTION_C), "#ef6c00", "-"),
+        ("Def: P(C|DD,C)", "Defector", (3, ACTION_C), "#c62828", "-"),
     ]
     for label, rival_key, ctx, color, ls in curves:
         agent = rival_runs[rival_key][0]
         series = [snap["probs"][ctx] for snap in agent.trace_log[:60]]
-        ax.plot(t60, series, label=label, color=color, linestyle=ls, linewidth=2)
-    ax.set_xlabel("Turno (t)")
-    ax.set_ylabel("Probabilidad Estimada P_t")
-    ax.set_title(f"3. Que aprende el agente (n0={initial_count}, lam={default_lambda}) segun el rival")
+        ax.plot(t60, series, label=label, color=color, linestyle=ls, linewidth=1.8)
+    ax.set_xlabel("Turno (t)", fontsize=8.5)
+    ax.set_ylabel("Probabilidad Estimada P_t", fontsize=8.5)
+    ax.set_title(f"3. Probabilidades aprendidas (lam={default_lambda})", fontsize=9.2, fontweight="bold")
     ax.set_ylim(-0.04, 1.25)
-    ax.legend(fontsize=7.6, loc="upper center", ncol=2, framealpha=0.92)
+    ax.legend(fontsize=6.6, loc="upper center", ncol=2, framealpha=0.92)
     ax.grid(alpha=0.3)
 
     # Panel 4: Policy mutation timeline [CC, CD, DC, DD] over turns 1..40
-    ax = axes[1, 1]
+    ax = axes[3]
     turns_map = 40
     grid_rows: list[list[int]] = []
     y_labels: list[str] = []
@@ -288,28 +289,28 @@ def main() -> None:
         for s_idx, s_name in enumerate(STATES):
             row = [agent.trace_log[t]["policy"][s_idx] for t in range(turns_map)]
             grid_rows.append(row)
-            y_labels.append(f"{rival_name[:4]}: {s_name}")
+            y_labels.append(f"{rival_name[:4]}:{s_name}")
 
     cmap = ListedColormap(["#d32f2f", "#2e7d32"])
     ax.imshow(np.array(grid_rows), aspect="auto", cmap=cmap, vmin=0, vmax=1, interpolation="nearest")
     for sep in (3.5, 7.5, 11.5):
-        ax.axhline(sep, color="white", linewidth=2.2)
+        ax.axhline(sep, color="white", linewidth=1.8)
     ax.set_yticks(range(len(y_labels)))
-    ax.set_yticklabels(y_labels, fontsize=7.5)
+    ax.set_yticklabels(y_labels, fontsize=6.4)
     ax.set_xticks(np.arange(0, turns_map, 5))
-    ax.set_xticklabels(np.arange(1, turns_map + 1, 5))
-    ax.set_xlabel("Turno (t)")
-    ax.set_title(f"4. Mutacion de politica pi_t[s] en vivo (n0={initial_count}, lam={default_lambda})")
+    ax.set_xticklabels(np.arange(1, turns_map + 1, 5), fontsize=7.5)
+    ax.set_xlabel("Turno (t)", fontsize=8.5)
+    ax.set_title("4. Mutacion de politica pi_t[s] en vivo", fontsize=9.2, fontweight="bold")
     ax.legend(
-        handles=[Patch(facecolor="#2e7d32", label="Cooperar (C)"), Patch(facecolor="#d32f2f", label="Traicionar (D)")],
+        handles=[Patch(facecolor="#2e7d32", label="C"), Patch(facecolor="#d32f2f", label="D")],
         loc="upper right",
-        fontsize=8,
+        fontsize=6.9,
         framealpha=0.92,
     )
 
     plt.tight_layout()
     out_path = Path(__file__).resolve().parent / "aprendizaje_olvido.png"
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
     print(f"\nGrafico de aprendizaje guardado en: {out_path}")
 

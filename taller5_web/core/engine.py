@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import session_store
+from contextvars import copy_context
+import re
+import codecs
 import io
 import json
+import math
 import os
+import selectors
+import shutil
+import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -45,10 +54,8 @@ from ipd_mdp import (
     solve_bellman,
 )
 from agents import (
-    BayesianFrequencyRLAgent,
     EmpiricalPolicyAgent,
     ForgettingTransitionRLAgent,
-    SafeUCBForgettingRLAgent,
 )
 from plot_learning import (
     CooperateThenDefect,
@@ -56,12 +63,12 @@ from plot_learning import (
     rolling_round_scores,
 )
 from generations import (
-    CloudOneStep,
+    CloudMiope,
     CustomMemory1Agent,
     CustomPhaseRival,
     ExpectimaxMarkovAgent,
     PYTHON_TEMPLATES,
-    RulitoMiope,
+    RulitoBellman,
     STATES_TUP,
     compile_custom_python_strategy,
 )
@@ -78,14 +85,13 @@ _RING_CACHE: dict[str, Any] | None = None
 CONTEXT_KEYS: list[tuple[int, int]] = [(s, a) for s in range(4) for a in ACTIONS]
 CONTEXT_LABELS: list[str] = [f"({STATES[s]}, {ACTION_LABELS[a]})" for s, a in CONTEXT_KEYS]
 
-# Canonical semantic colors matching taller5_evolucion_y_aprendizaje.tex
+# Canonical semantic colors matching evolucion_agentes_taller5.ipynb & Taller 5 report
 GEN_COLORS = {
-    "gen1_rulito": "#d62728",
-    "gen2_cloud": "#ef6c00",
+    "gen1_cloud": "#d62728",
+    "gen2_rulito": "#ef6c00",
     "gen3_gary": "#7b3fa0",
     "gen4_base": "#1565c0",
     "gen5_rl": "#2e7d32",
-    "gen6_jacinto": "#1d4ed8",
 }
 
 HARPER_CLASSES = [
@@ -127,28 +133,23 @@ HARPER_CLASSES = [
     axl.Random,
 ]
 
-# Verified paper ablation numbers for Gary (Figure 3 panel 4)
+# Minimal comparative summary for Gary (Expectimax H=2 + Markov)
 GARY_ABLATION_PAPER = {
     "benchmarks": [
         "Torneo Axelrod 1980\n(16 jugadores)",
-        "Benchmark Harper 2017\n(41 jugadores)",
-        "Mega-Torneo General\n(175 jugadores)",
+        "Benchmark Harper 2017\n(37 jugadores)",
+        "Mega-Torneo General\n(171 jugadores)",
     ],
     "series": [
         {
-            "label": "Gary Completo: Expectimax H=4 + Markov en Hojas",
+            "label": "3. Gary: Expectimax H=2 + Markov en Hojas",
             "color": "#7b3fa0",
-            "values": [2.686, 2.808, 2.847],
+            "values": [2.692, 2.854, 2.877],
         },
         {
-            "label": "Ablación 1: Árbol Expectimax H=4 sin Markov (h=0)",
-            "color": "#0e7490",
-            "values": [2.592, 2.741, 2.841],
-        },
-        {
-            "label": "Ablación 2: Cadena de Markov Directa (H=1)",
-            "color": "#0f766e",
-            "values": [2.584, 2.735, 2.835],
+            "label": "5. Mitcha (RL MDP con Olvido λ=0.90)",
+            "color": "#2e7d32",
+            "values": [2.650, 2.685, 2.795],
         },
     ],
 }
@@ -173,13 +174,13 @@ def _deserialize_ctx_dict(d: dict[str, Any], cast_fn: Callable = float) -> dict[
     return out
 
 
-def get_default_frequency_table(laplace_alpha: float = 0.0) -> FrequencyTableResult:
+def get_default_frequency_table() -> FrequencyTableResult:
     """Return cached 173,130-transition empirical frequency table from 30-strategy pool."""
-    cache_key = f"default_{laplace_alpha:.4f}"
+    cache_key = "default_exact"
     if cache_key in _FREQ_CACHE:
         return _FREQ_CACHE[cache_key]
 
-    if laplace_alpha == 0.0 and FREQ_CACHE_PATH.exists():
+    if FREQ_CACHE_PATH.exists():
         try:
             raw = json.loads(FREQ_CACHE_PATH.read_text(encoding="utf-8"))
             counts_coop = _deserialize_ctx_dict(raw["counts_coop"], int)
@@ -197,23 +198,7 @@ def get_default_frequency_table(laplace_alpha: float = 0.0) -> FrequencyTableRes
         except Exception:
             pass
 
-    if laplace_alpha != 0.0:
-        base = get_default_frequency_table(laplace_alpha=0.0)
-        p_coop = {
-            k: (base.counts_coop[k] + laplace_alpha) / (base.counts_total[k] + 2.0 * laplace_alpha)
-            for k in CONTEXT_KEYS
-        }
-        res = FrequencyTableResult(
-            counts_coop=base.counts_coop,
-            counts_total=base.counts_total,
-            p_coop=p_coop,
-            mdp_transitions=build_mdp_transition_matrix(p_coop),
-            total_transitions=base.total_transitions,
-        )
-        _FREQ_CACHE[cache_key] = res
-        return res
-
-    res = collect_frequency_table(build_training_pool(), turns=200, repetitions=1, seed=42, laplace_alpha=0.0)
+    res = collect_frequency_table(build_training_pool(), turns=200, repetitions=1, seed=42)
     _FREQ_CACHE[cache_key] = res
     try:
         FREQ_CACHE_PATH.write_text(
@@ -234,8 +219,8 @@ def get_default_frequency_table(laplace_alpha: float = 0.0) -> FrequencyTableRes
 
 
 def get_default_bellman(gamma: float = 0.90) -> BellmanResult:
-    freq = get_default_frequency_table(0.0)
-    return solve_bellman(freq.p_coop, gamma=gamma)
+    freq = get_default_frequency_table()
+    return solve_bellman(freq.p_coop, gamma=gamma, tol=1e-6, max_iter=2000)
 
 
 # =============================================================================
@@ -244,27 +229,14 @@ def get_default_bellman(gamma: float = 0.90) -> BellmanResult:
 
 
 def load_custom_strategies() -> list[dict[str, Any]]:
-    if not CUSTOM_STRATEGIES_PATH.exists():
-        return []
-    try:
-        data = json.loads(CUSTOM_STRATEGIES_PATH.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except Exception:
-        return []
-
-
-def save_custom_strategies(items: list[dict[str, Any]]) -> None:
-    CUSTOM_STRATEGIES_PATH.write_text(
-        json.dumps(items, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    return session_store.records()
 
 
 def _build_custom_player(item: dict[str, Any], record_trace: bool = False) -> axl.Player:
     kind = item.get("kind")
     name = item.get("name", "Estrategia Personalizada")
     cfg = item.get("config", {})
-    freq = get_default_frequency_table(0.0)
+    freq = get_default_frequency_table()
 
     if kind == "visual_mem1":
         return CustomMemory1Agent(
@@ -296,8 +268,8 @@ def _build_custom_player(item: dict[str, Any], record_trace: bool = False) -> ax
         )
     if kind == "visual_gary":
         return ExpectimaxMarkovAgent(
-            horizon=int(cfg.get("horizon", 4)),
-            gamma=float(cfg.get("gamma", 0.95)),
+            horizon=int(cfg.get("horizon", 2)),
+            gamma=float(cfg.get("gamma", 0.90)),
             use_markov_leaves=bool(cfg.get("use_markov_leaves", True)),
             player_name=name,
             record_trace=record_trace,
@@ -308,13 +280,10 @@ def _build_custom_player(item: dict[str, Any], record_trace: bool = False) -> ax
             player_name=name,
         )
     if kind == "python_code":
-        sid = item.get("id", name)
         code = item.get("code", "")
-        cache_key = f"{sid}:{hash(code)}"
-        cls = _CUSTOM_COMPILED_CACHE.get(cache_key)
-        if cls is None:
-            cls, _ = compile_custom_python_strategy(code, display_name=name)
-            _CUSTOM_COMPILED_CACHE[cache_key] = cls
+        if code not in {template["code"] for template in PYTHON_TEMPLATES.values()}:
+            raise ValueError("Elige una de las plantillas Python del taller.")
+        cls, _ = compile_custom_python_strategy(code, display_name=name)
         inst = cls()
         inst.name = name
         return inst
@@ -327,31 +296,31 @@ def build_strategy_catalog() -> list[dict[str, Any]]:
     catalog: list[dict[str, Any]] = [
         # Group 1: 5 Generations of Taller 5
         {
-            "id": "gen1_rulito",
-            "name": "1. Rulito (Miope g=0)",
-            "short": "1. Rulito",
+            "id": "gen1_cloud",
+            "name": "1. Cloud (Miope g=0)",
+            "short": "1. Cloud",
             "group": "5 Generaciones de Agentes",
             "color": "#d62728",
             "traceable": True,
-            "description": "Etapa I: Frecuentista miope (γ=0) con exploración alternante de 10 turnos. Colapsa al equilibrio de Nash (D,D).",
+            "description": "Etapa I (Taller IV Sec. 7 — Cloud): Frecuentista miope (γ=0) con exploración alternante de 10 turnos. Colapsa al equilibrio de Nash (D,D).",
         },
         {
-            "id": "gen2_cloud",
-            "name": "2. Cloud (1-Step g=0.90)",
-            "short": "2. Cloud",
+            "id": "gen2_rulito",
+            "name": "2. Rulito (1-Step g=0.90)",
+            "short": "2. Rulito",
             "group": "5 Generaciones de Agentes",
             "color": "#ef6c00",
             "traceable": True,
-            "description": "Etapa II: Proyección Bellman 1-step (γ=0.90) sobre P(O_t | s_{t-1}) sin condicionar en A_t.",
+            "description": "Etapa II (Taller IV Sec. 8 — Rulito): Proyección Bellman 1-step (γ=0.90) sobre P(O_t | s_{t-1}) sin condicionar en A_t.",
         },
         {
             "id": "gen3_gary",
-            "name": "3. Expectimax H=4 + Markov",
+            "name": "3. Expectimax H=2 + Markov",
             "short": "3. Gary (Expectimax)",
             "group": "5 Generaciones de Agentes",
             "color": "#7b3fa0",
             "traceable": True,
-            "description": "Etapa III (Gary): Árbol Expectimax H=4 (256 hojas, γ=0.95) con heurística terminal Markov-TFT cerrada.",
+            "description": "Etapa III (Gary): Expectimax H=2 (16 hojas, γ=0.90) con cierre terminal Markov (referencia de búsqueda).",
         },
         {
             "id": "gen4_base",
@@ -364,21 +333,12 @@ def build_strategy_catalog() -> list[dict[str, Any]]:
         },
         {
             "id": "gen5_rl",
-            "name": "5. Mitcha (RL Olvido n0=2.0, lam=0.90)",
+            "name": "5. Mitcha (RL Olvido)",
             "short": "5. Mitcha (RL)",
             "group": "5 Generaciones de Agentes",
             "color": "#2e7d32",
             "traceable": True,
             "description": "Etapa V (Final Taller 5 — Mitcha): RL online sobre matriz MDP 8×4 con contador efectivo n_k=λn_{k-1}+1 (n0=2.0, λ=0.90).",
-        },
-        {
-            "id": "gen6_jacinto",
-            "name": "6. Jacinto (RL + Safe UCB · Taller 6)",
-            "short": "6. Jacinto (UCB)",
-            "group": "Propuesta a Futuro (Taller 6)",
-            "color": "#1d4ed8",
-            "traceable": True,
-            "description": "Propuesta Taller 6 (Jacinto): Combina RL Olvido de Mitcha con exploración UCB segura (solo s ≠ CC) para explotar a Alternator (2.935 pts/ronda).",
         },
         # Group 2: Paper variants & ablations
         {
@@ -419,12 +379,12 @@ def build_strategy_catalog() -> list[dict[str, Any]]:
         },
         {
             "id": "rl_lam_100",
-            "name": "RL Sin Olvido (lam=1.00 / Bayes)",
+            "name": "RL Sin Olvido (lam=1.00)",
             "short": "RL λ=1.00",
             "group": "Variantes y Ablaciones",
             "color": "#8e24aa",
             "traceable": True,
-            "description": "Equivalente exacto a Beta-Bernoulli puro (M0=2.0). Sufre rigidez asintótica (η_k -> 0).",
+            "description": "Contador clásico acumulativo n_k = n_0 + k sin olvido (λ=1.00). Sufre rigidez asintótica (η_k → 0).",
         },
         {
             "id": "rl_no_prior",
@@ -434,24 +394,6 @@ def build_strategy_catalog() -> list[dict[str, Any]]:
             "color": "#64748b",
             "traceable": True,
             "description": "Mismo algoritmo RL con olvido pero iniciando desde matriz uniforme 0.50 (sin tabla supervisada).",
-        },
-        {
-            "id": "gary_no_markov",
-            "name": "Gary Ablación 1 (Árbol H=4 sin Markov)",
-            "short": "Gary sin Markov",
-            "group": "Variantes y Ablaciones",
-            "color": "#0e7490",
-            "traceable": True,
-            "description": "Expectimax H=4 truncado sin heurística de cadena de Markov en las hojas (h=0).",
-        },
-        {
-            "id": "gary_h1_markov",
-            "name": "Gary Ablación 2 (Markov Directa H=1)",
-            "short": "Gary H=1 Markov",
-            "group": "Variantes y Ablaciones",
-            "color": "#0f766e",
-            "traceable": True,
-            "description": "Evaluación directa a horizonte H=1 con valor terminal de cadena de Markov.",
         },
         # Group 3: Controlled & Non-stationary Rivals (C2-C6)
         {
@@ -536,24 +478,24 @@ def instantiate_strategy(
 ) -> axl.Player:
     """Instantiate any built-in, Axelrod, Harper, or user custom strategy."""
     p = params or {}
-    freq = get_default_frequency_table(0.0)
+    freq = get_default_frequency_table()
     bellman0 = get_default_bellman(0.90)
 
-    if strategy_id == "gen1_rulito":
-        return RulitoMiope(
+    if strategy_id == "gen1_cloud":
+        return CloudMiope(
             exploration_turns=int(p.get("exploration_turns", 10)),
             record_trace=record_trace,
         )
-    if strategy_id == "gen2_cloud":
-        return CloudOneStep(
+    if strategy_id == "gen2_rulito":
+        return RulitoBellman(
             gamma=float(p.get("gamma", 0.90)),
             exploration_turns=int(p.get("exploration_turns", 10)),
             record_trace=record_trace,
         )
     if strategy_id == "gen3_gary":
         return ExpectimaxMarkovAgent(
-            horizon=int(p.get("horizon", 4)),
-            gamma=float(p.get("gamma", 0.95)),
+            horizon=int(p.get("horizon", 2)),
+            gamma=float(p.get("gamma", 0.90)),
             use_markov_leaves=bool(p.get("use_markov_leaves", True)),
             record_trace=record_trace,
         )
@@ -569,16 +511,6 @@ def instantiate_strategy(
             initial_count=float(p.get("initial_count", 2.0)),
             forgetting_factor=float(p.get("forgetting_factor", 0.90)),
             player_name="5. Mitcha (RL Olvido)",
-            record_trace=record_trace,
-        )
-    if strategy_id == "gen6_jacinto":
-        return SafeUCBForgettingRLAgent(
-            prior_p=freq.p_coop,
-            gamma=float(p.get("gamma", 0.90)),
-            initial_count=float(p.get("initial_count", 2.0)),
-            forgetting_factor=float(p.get("forgetting_factor", 0.90)),
-            ucb_c=float(p.get("ucb_c", 1.5)),
-            player_name="6. Jacinto (RL + Safe UCB)",
             record_trace=record_trace,
         )
     if strategy_id == "rl_lam_070":
@@ -623,7 +555,7 @@ def instantiate_strategy(
             gamma=0.90,
             initial_count=2.0,
             forgetting_factor=1.00,
-            player_name="RL Sin Olvido (lam=1.00 / Bayes)",
+            player_name="RL Sin Olvido (lam=1.00)",
             record_trace=record_trace,
         )
     if strategy_id == "rl_no_prior":
@@ -633,22 +565,6 @@ def instantiate_strategy(
             initial_count=2.0,
             forgetting_factor=0.90,
             player_name="RL Sin Prior (0.50 uniforme)",
-            record_trace=record_trace,
-        )
-    if strategy_id == "gary_no_markov":
-        return ExpectimaxMarkovAgent(
-            horizon=4,
-            gamma=0.95,
-            use_markov_leaves=False,
-            player_name="Gary Ablación 1 (Árbol H=4 sin Markov)",
-            record_trace=record_trace,
-        )
-    if strategy_id == "gary_h1_markov":
-        return ExpectimaxMarkovAgent(
-            horizon=1,
-            gamma=0.95,
-            use_markov_leaves=True,
-            player_name="Gary Ablación 2 (Markov Directa H=1)",
             record_trace=record_trace,
         )
     if strategy_id == "rival_switch_50":
@@ -684,22 +600,21 @@ def instantiate_strategy(
 
 def compute_mdp_payload(
     gamma: float = 0.90,
-    laplace_alpha: float = 0.0,
     initial_count: float = 2.0,
     forgetting_factor: float = 0.90,
     custom_p_coop: dict[str, float] | None = None,
     defector_turns: int = 30,
 ) -> dict[str, Any]:
-    freq = get_default_frequency_table(laplace_alpha=laplace_alpha)
+    freq = get_default_frequency_table()
     if custom_p_coop and len(custom_p_coop) == 8:
         p_coop = {k: max(0.0, min(1.0, float(custom_p_coop[f"{k[0]}_{k[1]}"]))) for k in CONTEXT_KEYS}
     else:
         p_coop = dict(freq.p_coop)
 
     mdp_mat = build_mdp_transition_matrix(p_coop)
-    bellman = solve_bellman(p_coop, gamma=gamma)
+    bellman = solve_bellman(p_coop, gamma=gamma, tol=1e-6, max_iter=2000)
 
-    # Trace vs Defector (Panel 3 of resultados_experimento.png + Trace Table B in paper)
+    # Trace vs Defector (Panel 3 of resultados_experimento.png)
     agent = ForgettingTransitionRLAgent(
         prior_p=p_coop,
         gamma=gamma,
@@ -733,6 +648,7 @@ def compute_mdp_payload(
                 "delta_q_dd": round(float(snap["delta_q"][3]), 4),
                 "policy": "".join(ACTION_LABELS[a] for a in snap["policy"]),
                 "pi_dd": ACTION_LABELS[snap["policy"][3]],
+                "iterations": int(snap.get("iterations", 0)),
                 "cum_avg": round(float(cum_avg[t - 1]), 4),
             }
         )
@@ -773,7 +689,7 @@ def compute_mdp_payload(
     return {
         "total_transitions": freq.total_transitions,
         "gamma": gamma,
-        "laplace_alpha": laplace_alpha,
+        "bellman_iterations": int(bellman.iterations),
         "initial_count": initial_count,
         "forgetting_factor": forgetting_factor,
         "policy_str": "".join(ACTION_LABELS[a] for a in bellman.policy),
@@ -793,8 +709,8 @@ def run_lambda_sweep_axelrod(
 ) -> dict[str, Any]:
     """Reproduce Panel 4 of resultados_experimento.png live on Axelrod 1980."""
     lam_list = lambdas or [0.70, 0.80, 0.85, 0.90, 0.95, 1.0]
-    freq = get_default_frequency_table(0.0)
-    bellman0 = solve_bellman(freq.p_coop, gamma=gamma)
+    freq = get_default_frequency_table()
+    bellman0 = solve_bellman(freq.p_coop, gamma=gamma, tol=1e-6, max_iter=2000)
 
     def _eval_one(agent: axl.Player) -> tuple[dict[str, Any], dict[str, Any]]:
         players = [cls() for cls in axl.axelrod_first_strategies] + [agent.clone()]
@@ -893,17 +809,17 @@ def run_lambda_sweep_axelrod(
 
 
 # =============================================================================
-# 2. EVOLUTION SUITE (fig_evolucion_agentes.png)
+# 2. EVOLUTION SUITE (5 GENERACIONES)
 # =============================================================================
 
 
 def run_evolution_suite(turns: int = 200, repetitions: int = 5, seed: int = 42, include_axelrod: bool = True) -> dict[str, Any]:
-    """Reproduce all 4 panels of fig_evolucion_agentes.png live."""
-    gen_ids = ["gen1_rulito", "gen2_cloud", "gen3_gary", "gen4_base", "gen5_rl"]
+    """Reproduce the 5-generation evolution panels live."""
+    gen_ids = ["gen1_cloud", "gen2_rulito", "gen3_gary", "gen4_base", "gen5_rl"]
     short_labels = {
-        "gen1_rulito": "1. Rulito\n(Miope g=0)",
-        "gen2_cloud": "2. Cloud\n(1-Step g=0.9)",
-        "gen3_gary": "3. Expectimax\nH=4 + Markov",
+        "gen1_cloud": "1. Cloud\n(Miope g=0)",
+        "gen2_rulito": "2. Rulito\n(1-Step g=0.9)",
+        "gen3_gary": "3. Expectimax\nH=2 + Markov",
         "gen4_base": "4. Base MDP\nFija (CDDC)",
         "gen5_rl": "5. Mitcha\n(RL Olvido)",
     }
@@ -936,11 +852,11 @@ def run_evolution_suite(turns: int = 200, repetitions: int = 5, seed: int = 42, 
                 }
             )
     else:
-        # Fast paper baseline from evolucion_agentes_taller5.ipynb (seed=42, 5 reps)
+        # Verified fast baseline (seed=42, 5 reps, tol=1e-6)
         paper_vals = [
-            ("gen1_rulito", "1. Rulito (Miope g=0)", 1.948, 0.014, 11),
-            ("gen2_cloud", "2. Cloud (1-Step g=0.90)", 2.359, 0.019, 7),
-            ("gen3_gary", "3. Expectimax H=4 + Markov", 2.659, 0.072, 1),
+            ("gen1_cloud", "1. Cloud (Miope g=0)", 1.938, 0.013, 11),
+            ("gen2_rulito", "2. Rulito (1-Step g=0.90)", 2.468, 0.025, 6),
+            ("gen3_gary", "3. Expectimax H=2 + Markov", 2.652, 0.073, 1),
             ("gen4_base", "4. Base MDP Fija (CDDC)", 2.559, 0.018, 3),
             ("gen5_rl", "5. Mitcha (RL Olvido)", 2.662, 0.024, 1),
         ]
@@ -1048,8 +964,8 @@ def run_online_learning_suite(
     seed: int = 42,
 ) -> dict[str, Any]:
     """Reproduce ALL 8 panels of aprendizaje_olvido.png & aprendizaje_detalle_rl.png live."""
-    freq = get_default_frequency_table(0.0)
-    bellman0 = solve_bellman(freq.p_coop, gamma=gamma)
+    freq = get_default_frequency_table()
+    bellman0 = solve_bellman(freq.p_coop, gamma=gamma, tol=1e-6, max_iter=2000)
     lam_cmp = lambdas_compare or [0.70, 0.85, 0.90, 1.00]
     lam_colors = {0.70: "#00897b", 0.80: "#00897b", 0.85: "#2e7d32", 0.90: "#1565c0", 0.95: "#6a1b9a", 1.00: "#8e24aa"}
 
@@ -1307,32 +1223,32 @@ def run_online_learning_suite(
 
 
 # =============================================================================
-# 4. GARY EXPECTIMAX + MARKOV DYNAMICS (fig_gary_busqueda_dinamica.png)
+# 4. GARY EXPECTIMAX + MARKOV DYNAMICS (REFERENCIA HEURISTICA)
 # =============================================================================
 
 
 def run_gary_dynamics(
-    horizon: int = 4,
-    gamma: float = 0.95,
+    horizon: int = 2,
+    gamma: float = 0.90,
     rival_id: str = "axl_FirstByJoss",
     turns: int = 200,
     seed: int = 42,
 ) -> dict[str, Any]:
-    """Reproduce all 4 panels of fig_gary_busqueda_dinamica.png + live Markov states."""
+    """Simulate Expectimax H=2 + Markov dynamics and turn-by-turn root values."""
     l_gamma = 1.0 / max(1e-6, (1.0 - gamma))
     t_arr = list(range(1, turns + 1))
     w_fut = [round(100.0 * l_gamma / (t + l_gamma), 3) for t in t_arr]
     w_pas = [round(100.0 * t / (t + l_gamma), 3) for t in t_arr]
 
-    # Panel 2: Gary root evaluation f_t(C) vs f_t(D) against TitForTat + Rulito collapse
+    # Root evaluation f_t(C) vs f_t(D) against TitForTat + Cloud collapse reference
     gary_tft = ExpectimaxMarkovAgent(horizon=horizon, gamma=gamma, record_trace=True)
     axl.Match((gary_tft, axl.TitForTat()), turns=turns, seed=seed).play()
-    rulito_tft = RulitoMiope(exploration_turns=10, record_trace=True)
-    axl.Match((rulito_tft, axl.TitForTat()), turns=turns, seed=seed).play()
+    cloud_tft = CloudMiope(exploration_turns=10, record_trace=True)
+    axl.Match((cloud_tft, axl.TitForTat()), turns=turns, seed=seed).play()
 
     f_c_tft = [round(float(s["f_c"]), 4) for s in gary_tft.trace_log]
     f_d_tft = [round(float(s["f_d"]), 4) for s in gary_tft.trace_log]
-    rulito_qd_tft = [round(float(s["q_d"]), 4) for s in rulito_tft.trace_log]
+    cloud_qd_tft = [round(float(s["q_d"]), 4) for s in cloud_tft.trace_log]
 
     # Panel 3: Frequentist E_t vector vs selected rival (default Joss)
     rival = instantiate_strategy(rival_id)
@@ -1374,7 +1290,7 @@ def run_gary_dynamics(
         "root_vs_tft": {
             "f_c": f_c_tft,
             "f_d": f_d_tft,
-            "rulito_qd": rulito_qd_tft,
+            "cloud_qd": cloud_qd_tft,
             "mean_f_c": round(float(np.mean(f_c_tft)), 3),
             "mean_f_d": round(float(np.mean(f_d_tft[1:])), 3) if len(f_d_tft) > 1 else 1.2,
         },
@@ -1425,13 +1341,13 @@ def _extract_agent_trace(agent: axl.Player) -> dict[str, Any] | None:
 
     first = trace_log[0]
     if "probs" in first:
-        # MDP RL agent (Forgetting or Bayesian)
+        # MDP RL agent (Forgetting RL)
         gamma = float(getattr(agent, "gamma", 0.90))
         turns_out = []
         for snap in trace_log:
             probs = snap["probs"]
             mat = build_mdp_transition_matrix(probs)
-            b_res = solve_bellman(probs, gamma=gamma, tol=1e-5, max_iter=35)
+            b_res = solve_bellman(probs, gamma=gamma, tol=1e-6, max_iter=2000)
             turns_out.append(
                 {
                     "probs": {f"{s}_{a}": round(float(probs[(s, a)]), 4) for s, a in CONTEXT_KEYS},
@@ -1441,6 +1357,7 @@ def _extract_agent_trace(agent: axl.Player) -> dict[str, Any] | None:
                     "v_star": [round(float(v), 3) for v in b_res.v_values],
                     "policy": [int(x) for x in snap["policy"]],
                     "policy_str": "".join(ACTION_LABELS[x] for x in snap["policy"]),
+                    "iterations": int(snap.get("iterations", b_res.iterations)),
                     "effective_counts": {
                         f"{s}_{a}": round(float(snap["effective_counts"][(s, a)]), 3)
                         for s, a in CONTEXT_KEYS
@@ -1593,10 +1510,10 @@ def run_h2h_matrix(strategy_ids: list[str], turns: int = 200, seed: int = 42) ->
 
 
 def load_verified_paper_tournaments() -> dict[str, Any] | None:
-    if not PAPER_TOURNAMENTS_JSON.exists():
+    if not get_script_output(PAPER_TOURNAMENTS_JSON.name).exists():
         return None
     try:
-        return json.loads(PAPER_TOURNAMENTS_JSON.read_text(encoding="utf-8"))
+        return json.loads(get_script_output(PAPER_TOURNAMENTS_JSON.name).read_text(encoding="utf-8"))
     except Exception:
         return None
 
@@ -1616,7 +1533,7 @@ def _resolve_tournament_pool(preset: str, selected_ids: list[str]) -> list[tuple
     if preset == "axelrod1980":
         for cls in axl.axelrod_first_strategies:
             _add(f"axl_{cls.__name__}")
-    elif preset == "harper41":
+    elif preset in ("harper37", "harper41"):
         for cls in HARPER_CLASSES:
             _add(f"axl_{cls.__name__}")
     elif preset == "mini10":
@@ -1653,6 +1570,7 @@ def start_tournament_job(
 
     with _JOBS_LOCK:
         _JOBS[job_id] = {
+            "owner": session_store.owner.get(),
             "job_id": job_id,
             "status": "running",
             "progress": 0,
@@ -1774,17 +1692,17 @@ def start_tournament_job(
         except Exception as exc:
             with _JOBS_LOCK:
                 _JOBS[job_id]["status"] = "error"
-                _JOBS[job_id]["error"] = str(exc)
-                _JOBS[job_id]["traceback"] = traceback.format_exc()
+                _JOBS[job_id]["error"] = "No se pudo completar el torneo."
+                traceback.print_exc()
 
-    threading.Thread(target=_worker, daemon=True).start()
+    threading.Thread(target=copy_context().run, args=(_worker,), daemon=True).start()
     return {"job_id": job_id, "status": "running"}
 
 
 def get_tournament_job(job_id: str) -> dict[str, Any] | None:
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
-        return dict(job) if job else None
+        return {k:v for k,v in job.items() if k != "owner"} if job and job["owner"] == session_store.owner.get() else None
 
 
 # =============================================================================
@@ -1794,6 +1712,12 @@ def get_tournament_job(job_id: str) -> dict[str, Any] | None:
 
 def test_custom_strategy_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Compile and run quick diagnostic duels vs TFT, Defector, Alternator, Grudger."""
+    if not re.fullmatch(r"#[A-Fa-f0-9]{6}", payload.get("color", "#0ea5e9")):
+        raise ValueError("Elige un color hexadecimal.")
+    if len(payload.get("name","")) > 100 or len(payload.get("description","")) > 2000:
+        raise ValueError("Nombre o descripción demasiado largos.")
+    if payload.get("kind") == "visual_gary" and not 1 <= int(payload.get("config",{}).get("horizon",4)) <= 6:
+        raise ValueError("Horizonte fuera de rango.")
     player = _build_custom_player(payload, record_trace=False)
     benchmarks = [
         ("Tit For Tat", axl.TitForTat()),
@@ -1829,8 +1753,7 @@ def test_custom_strategy_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def register_custom_strategy(payload: dict[str, Any]) -> dict[str, Any]:
     """Validate, persist, and return newly saved custom strategy."""
     diag = test_custom_strategy_payload(payload)
-    items = load_custom_strategies()
-    sid = payload.get("id") or uuid.uuid4().hex[:8]
+    sid = uuid.uuid4().hex
     record = {
         "id": sid,
         "name": payload.get("name") or diag["name"],
@@ -1841,17 +1764,12 @@ def register_custom_strategy(payload: dict[str, Any]) -> dict[str, Any]:
         "code": payload.get("code", ""),
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
-    items = [it for it in items if it.get("id") != sid]
-    items.append(record)
-    save_custom_strategies(items)
+    session_store.put(record)
     return {"saved": record, "diagnostics": diag, "catalog": build_strategy_catalog()}
 
 
 def delete_custom_strategy(cid: str) -> dict[str, Any]:
-    items = load_custom_strategies()
-    new_items = [it for it in items if it.get("id") != cid]
-    save_custom_strategies(new_items)
-    return {"deleted": len(new_items) < len(items), "catalog": build_strategy_catalog()}
+    return {"deleted": session_store.remove(cid), "catalog": build_strategy_catalog()}
 
 
 # =============================================================================
@@ -1859,23 +1777,35 @@ def delete_custom_strategy(cid: str) -> dict[str, Any]:
 # =============================================================================
 
 _SCRIPT_JOBS: dict[str, dict[str, Any]] = {}
-_SCRIPT_PROCS: dict[str, subprocess.Popen] = {}
+_SCRIPT_CANCEL: dict[str, threading.Event] = {}
+_SCRIPT_START: dict[str, float] = {}
 _SCRIPT_LOCK = threading.Lock()
+_SCRIPT_SLOT = threading.BoundedSemaphore()
+_SCRIPT_NEXT_START = 0.0
+_SCRIPT_COOLDOWN = 10
+_SCRIPT_DEADLINE = 180
+_SCRIPT_HISTORY_LIMIT = 32
+_SCRIPT_OUTPUT_LIMIT = 32_768
+_SCRIPT_OUTPUT_DIR = Path(tempfile.gettempdir()) / "taller5-script-output"
+
+
+class ScriptRunLimit(Exception):
+    """The single script slot is busy or cooling down."""
+
+    def __init__(self, message: str, retry_after: int | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 ALLOWED_OUTPUT_IMAGES = {
     "resultados_experimento.png",
     "aprendizaje_olvido.png",
     "aprendizaje_detalle_rl.png",
-    "fig_evolucion_agentes.png",
-    "fig_torneos_10seeds_5agentes.png",
-    "fig_megatorneo_harper.png",
-    "fig_gary_busqueda_dinamica.png",
 }
 
 EXECUTABLE_SCRIPTS: dict[str, dict[str, Any]] = {
     "test_ipd.py": {
         "path": ROOT_DIR / "test_ipd.py",
-        "description": "Suite oficial de 9 pruebas unitarias: invariantes 8×4, Bellman, equivalencia λ=1.0 y cambio de régimen.",
+        "description": "Suite oficial de 8 pruebas unitarias: invariantes 8×4, Bellman (<=1e-6), agentes Taller IV, olvido exponencial y adaptación.",
         "cli": "python3 -m unittest test_ipd.py -v",
         "cmd": [sys.executable, "-u", "-m", "unittest", "test_ipd.py", "-v"],
         "est": "~0.1 s",
@@ -1922,7 +1852,7 @@ EXECUTABLE_SCRIPTS: dict[str, dict[str, Any]] = {
     },
     "agents.py": {
         "path": ROOT_DIR / "agents.py",
-        "description": "Agente Base (CDDC), RL Bayesiano Puro (Beta-Bernoulli) y RL Online con Factor de Olvido.",
+        "description": "Agentes Taller IV (CloudMiope, RulitoBellman), Agente Base (CDDC) y Mitcha (ForgettingTransitionRLAgent).",
         "cli": "python3 (prueba rápida de EmpiricalPolicyAgent vs ForgettingTransitionRLAgent)",
         "cmd": [
             sys.executable,
@@ -1950,7 +1880,7 @@ EXECUTABLE_SCRIPTS: dict[str, dict[str, Any]] = {
     },
     "generations.py": {
         "path": CORE_DIR / "generations.py",
-        "description": "Implementación traceable de las 5 generaciones: Rulito, Cloud, Expectimax H=4 + Markov, Base CDDC y RL Olvido.",
+        "description": "Implementación traceable de las 5 generaciones: Cloud (Miope), Rulito (1-Step), Expectimax H=2 + Markov (ref.), Base CDDC y Mitcha.",
         "cli": "python3 (comparativa rápida de las 5 generaciones frente a 5 arquetipos)",
         "cmd": [
             sys.executable,
@@ -1961,8 +1891,8 @@ EXECUTABLE_SCRIPTS: dict[str, dict[str, Any]] = {
                 "sys.path.insert(0, 'taller5_web/core')\n"
                 "import axelrod as axl, ipd_mdp as m, generations as g\n"
                 "f = m.collect_frequency_table(m.build_training_pool(), turns=200, repetitions=1, seed=42)\n"
-                "b = m.solve_bellman(f.p_coop, gamma=0.90)\n"
-                "gens = [('1. Rulito', g.RulitoMiope), ('2. Cloud', g.CloudOneStep), ('3. Expectimax', lambda: g.ExpectimaxMarkovAgent(4, 0.95)), ('4. Base CDDC', lambda: g.EmpiricalPolicyAgent(b.policy)), ('5. RL Olvido', lambda: g.ForgettingTransitionRLAgent(f.p_coop, initial_count=2.0, forgetting_factor=0.90))]\n"
+                "b = m.solve_bellman(f.p_coop, gamma=0.90, tol=1e-6, max_iter=2000)\n"
+                "gens = [('1. Cloud', g.CloudMiope), ('2. Rulito', g.RulitoBellman), ('3. Expectimax', lambda: g.ExpectimaxMarkovAgent(2, 0.90)), ('4. Base CDDC', lambda: g.EmpiricalPolicyAgent(b.policy)), ('5. Mitcha', lambda: g.ForgettingTransitionRLAgent(f.p_coop, initial_count=2.0, forgetting_factor=0.90))]\n"
                 "opps = [('TFT', axl.TitForTat), ('Grudger', axl.Grudger), ('Defector', axl.Defector), ('Altern.', axl.Alternator), ('C->D t50', lambda: g.CooperateThenDefect(50))]\n"
                 "print(f'{\"Agente\":<15} ' + ' '.join(f'{o[0]:>9}' for o in opps))\n"
                 "print('-' * 68)\n"
@@ -1978,21 +1908,13 @@ EXECUTABLE_SCRIPTS: dict[str, dict[str, Any]] = {
         "est": "~2 s",
         "outputs": [],
     },
-    "run_tournaments_10seeds_and_harper.py": {
-        "path": ROOT_DIR / "run_tournaments_10seeds_and_harper.py",
-        "description": "Evaluación masiva completa: Axelrod 1980 (10 seeds), Harper et al. (41 estrategias, 10 seeds) y Mega-Torneo (175 estrategias).",
-        "cli": "python3 run_tournaments_10seeds_and_harper.py",
-        "cmd": [sys.executable, "-u", "run_tournaments_10seeds_and_harper.py"],
-        "est": "~45–90 s",
-        "outputs": ["fig_torneos_10seeds_5agentes.png", "fig_megatorneo_harper.png"],
-    },
     "evolucion_agentes_taller5.ipynb": {
         "path": ROOT_DIR / "evolucion_agentes_taller5.ipynb",
-        "description": "Notebook reproducible completo con todas las celdas de código y experimentos del proyecto.",
+        "description": "Notebook reproducible oficial del Taller 5 con todas las celdas de código, Value Iteration <=1e-6 y figuras.",
         "cli": "jupyter nbconvert --execute evolucion_agentes_taller5.ipynb",
         "cmd": None,
         "est": "Notebook",
-        "outputs": ["fig_evolucion_agentes.png"],
+        "outputs": ["resultados_experimento.png", "aprendizaje_olvido.png", "aprendizaje_detalle_rl.png"],
     },
 }
 
@@ -2042,110 +1964,219 @@ def get_source_code_bundle() -> list[dict[str, Any]]:
     return out
 
 
+def _reserve_execution() -> None:
+    with _SCRIPT_LOCK:
+        if not _SCRIPT_SLOT.acquire(blocking=False):
+            raise ScriptRunLimit("Ya hay una ejecución de IPD en curso. Espera a que termine.")
+        wait = math.ceil(_SCRIPT_NEXT_START - time.monotonic())
+        if wait > 0:
+            _SCRIPT_SLOT.release()
+            raise ScriptRunLimit(f"Espera {wait} s antes de iniciar otra ejecución.", retry_after=wait)
+
+
+def _release_execution() -> None:
+    global _SCRIPT_NEXT_START
+    with _SCRIPT_LOCK:
+        _SCRIPT_NEXT_START = time.monotonic() + _SCRIPT_COOLDOWN
+        _SCRIPT_SLOT.release()
+
+
+def _append_script_output(job: dict[str, Any], text: str) -> None:
+    output = job["output"] + text
+    job["output_truncated"] |= len(output) > _SCRIPT_OUTPUT_LIMIT
+    job["output"] = output[-_SCRIPT_OUTPUT_LIMIT:]
+
+
+def _run_script_process(cmd, workspace: Path, cancel: threading.Event, on_output) -> tuple[str, int]:
+    env = dict(os.environ)
+    env.update(PYTHONUNBUFFERED="1", MPLBACKEND="Agg")
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(CORE_DIR), env.get("PYTHONPATH"))))
+    for key in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        env[key] = "1"
+    proc = subprocess.Popen(
+        ["nice", "-n", "10", *cmd],
+        cwd=workspace,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+        env=env,
+    )
+    deadline = time.monotonic() + _SCRIPT_DEADLINE
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    finished = False
+    try:
+        with proc.stdout as stream, selectors.DefaultSelector() as selector:
+            selector.register(stream, selectors.EVENT_READ)
+            while True:
+                if cancel.is_set():
+                    status = "stopped"
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    status = "timed_out"
+                    break
+                if not selector.get_map() and proc.poll() is not None:
+                    finished = True
+                    status = "done" if proc.returncode == 0 else "error"
+                    break
+                for event, _ in selector.select(min(0.25, remaining)):
+                    chunk = os.read(event.fd, 4096)
+                    if chunk:
+                        on_output(decoder.decode(chunk))
+                    else:
+                        selector.unregister(event.fileobj)
+            on_output(decoder.decode(b"", final=True))
+    finally:
+        if not finished:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        rc = proc.wait()
+    return status, rc
+
+
+def get_script_output(name: str) -> Path:
+    generated = _SCRIPT_OUTPUT_DIR / name
+    return generated if generated.is_file() else ROOT_DIR / name
+
+
+def _publish_script_outputs(workspace: Path, script_id: str, outputs: list[str]) -> list[dict[str, str]]:
+    filenames = list(outputs)
+    files = [workspace / name for name in filenames if (workspace / name).is_file()]
+    if any(file.stat().st_size > 8 * 1024 * 1024 for file in files):
+        raise ValueError("El script generó un archivo mayor que el límite permitido.")
+    for file in files:
+        file.replace(_SCRIPT_OUTPUT_DIR / file.name)
+    stamp = time.time_ns()
+    return [
+        {"name": file.name, "url": f"/project-img/{file.name}?t={stamp}"}
+        for file in files
+        if file.name in outputs
+    ]
+
+
 def start_script_job(script_id: str) -> dict[str, Any]:
-    """Run an allowlisted project Python script inside ROOT_DIR with streaming stdout/stderr."""
+    """Run one predefined script in a bounded background job."""
     meta = EXECUTABLE_SCRIPTS.get(script_id)
     if meta is None or meta["cmd"] is None:
         raise ValueError(f"Script no ejecutable directamente: {script_id}")
 
-    job_id = uuid.uuid4().hex[:10]
-    start_ts = time.time()
+    _reserve_execution()
+    job_id = uuid.uuid4().hex
+    start_ts = time.monotonic()
+    cancel = threading.Event()
+    job = {
+        "job_id": job_id,
+        "owner": session_store.owner.get(),
+        "script_id": script_id,
+        "cli": meta["cli"],
+        "status": "running",
+        "returncode": None,
+        "output": f"$ {meta['cli']}\n",
+        "output_truncated": False,
+        "elapsed_sec": 0.0,
+        "generated_images": [],
+        "started_at": time.time(),
+    }
     with _SCRIPT_LOCK:
-        _SCRIPT_JOBS[job_id] = {
-            "job_id": job_id,
-            "script_id": script_id,
-            "cli": meta["cli"],
-            "status": "running",
-            "returncode": None,
-            "output": f"$ {meta['cli']}\n",
-            "elapsed_sec": 0.0,
-            "generated_images": [],
-            "started_at": start_ts,
-        }
+        if len(_SCRIPT_JOBS) >= _SCRIPT_HISTORY_LIMIT:
+            oldest = next(iter(_SCRIPT_JOBS))
+            del _SCRIPT_JOBS[oldest]
+        _SCRIPT_JOBS[job_id] = job
+        _SCRIPT_CANCEL[job_id] = cancel
+        _SCRIPT_START[job_id] = start_ts
 
-    def _runner():
-        env = dict(os.environ)
-        env["PYTHONUNBUFFERED"] = "1"
-        env["MPLBACKEND"] = "Agg"
+    def append(text):
+        with _SCRIPT_LOCK:
+            _append_script_output(job, text)
+
+    def runner():
+        status, rc, images = "error", None, []
         try:
-            proc = subprocess.Popen(
-                meta["cmd"],
-                cwd=str(ROOT_DIR),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                env=env,
-            )
+            _SCRIPT_OUTPUT_DIR.mkdir(mode=0o700, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix=".ipd-script-", dir=_SCRIPT_OUTPUT_DIR) as tmp:
+                workspace = Path(tmp)
+                for source in ROOT_DIR.glob("*.py"):
+                    shutil.copyfile(source, workspace / source.name)
+                if cancel.is_set():
+                    status = "stopped"
+                else:
+                    status, rc = _run_script_process(meta["cmd"], workspace, cancel, append)
+                if status == "done":
+                    images = _publish_script_outputs(workspace, script_id, meta["outputs"])
+            if status == "stopped":
+                append("\n[Ejecución detenida por el usuario]\n")
+            elif status == "timed_out":
+                append(f"\n[Se alcanzó el límite de {_SCRIPT_DEADLINE} segundos]\n")
+        except Exception:
+            status = "error"
+            traceback.print_exc()
+            append("\n[No se pudo completar la ejecución del script]\n")
+        finally:
             with _SCRIPT_LOCK:
-                _SCRIPT_PROCS[job_id] = proc
+                _SCRIPT_CANCEL.pop(job_id, None)
+                _SCRIPT_START.pop(job_id, None)
+                job.update(
+                    status=status,
+                    returncode=rc,
+                    elapsed_sec=round(time.monotonic() - start_ts, 2),
+                    generated_images=images,
+                )
+            _release_execution()
 
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                with _SCRIPT_LOCK:
-                    job = _SCRIPT_JOBS.get(job_id)
-                    if job is not None:
-                        job["output"] += line
-                        job["elapsed_sec"] = round(time.time() - start_ts, 2)
-
-            rc = proc.wait()
-            elapsed = round(time.time() - start_ts, 2)
-            gen_imgs = []
-            for img_name in meta.get("outputs", []):
-                img_path = ROOT_DIR / img_name
-                if img_path.exists():
-                    gen_imgs.append({"name": img_name, "url": f"/project-img/{img_name}?t={int(time.time())}"})
-
-            with _SCRIPT_LOCK:
-                _SCRIPT_PROCS.pop(job_id, None)
-                job = _SCRIPT_JOBS.get(job_id)
-                if job is not None and job["status"] == "running":
-                    job["returncode"] = rc
-                    job["elapsed_sec"] = elapsed
-                    job["status"] = "done" if rc == 0 else "error"
-                    job["generated_images"] = gen_imgs
-        except Exception as exc:
-            with _SCRIPT_LOCK:
-                _SCRIPT_PROCS.pop(job_id, None)
-                job = _SCRIPT_JOBS.get(job_id)
-                if job is not None:
-                    job["status"] = "error"
-                    job["output"] += f"\n[ERROR] {exc}\n"
-                    job["elapsed_sec"] = round(time.time() - start_ts, 2)
-
-    threading.Thread(target=_runner, daemon=True).start()
+    try:
+        threading.Thread(target=runner, daemon=True).start()
+    except Exception:
+        with _SCRIPT_LOCK:
+            _SCRIPT_JOBS.pop(job_id, None)
+            _SCRIPT_CANCEL.pop(job_id, None)
+            _SCRIPT_START.pop(job_id, None)
+        _release_execution()
+        raise
     return {"job_id": job_id, "status": "running", "script_id": script_id}
+
+
+def _script_status(job_id: str) -> dict[str, Any] | None:
+    job = _SCRIPT_JOBS.get(job_id)
+    if job is None:
+        return None
+    out = dict(job)
+    out.pop("owner", None)
+    if job_id in _SCRIPT_START:
+        out["elapsed_sec"] = round(time.monotonic() - _SCRIPT_START[job_id], 2)
+    if job["output_truncated"]:
+        out["output"] = "[Salida anterior recortada]\n" + out["output"]
+    return out
 
 
 def get_script_job(job_id: str) -> dict[str, Any] | None:
     with _SCRIPT_LOCK:
-        job = _SCRIPT_JOBS.get(job_id)
-        if not job:
+        if _SCRIPT_JOBS.get(job_id, {}).get("owner") != session_store.owner.get():
             return None
-        out = dict(job)
-        if out["status"] == "running":
-            out["elapsed_sec"] = round(time.time() - out["started_at"], 2)
-        return out
+        return _script_status(job_id)
 
 
 def stop_script_job(job_id: str) -> dict[str, Any]:
     with _SCRIPT_LOCK:
-        proc = _SCRIPT_PROCS.pop(job_id, None)
-        job = _SCRIPT_JOBS.get(job_id)
-        if proc is not None:
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-        if job is not None:
-            job["status"] = "stopped"
-            job["output"] += "\n[Ejecución detenida por el usuario]\n"
-            job["elapsed_sec"] = round(time.time() - job["started_at"], 2)
-            return dict(job)
-    return {"status": "not_found"}
+        if _SCRIPT_JOBS.get(job_id, {}).get("owner") != session_store.owner.get():
+            return {"status":"not_found"}
+        cancel = _SCRIPT_CANCEL.get(job_id)
+        if cancel is not None:
+            cancel.set()
+        return _script_status(job_id) or {"status": "not_found"}
 
 
 def run_unit_tests_live() -> dict[str, Any]:
+    _reserve_execution()
+    try:
+        return _run_unit_tests_live()
+    finally:
+        _release_execution()
+
+
+def _run_unit_tests_live() -> dict[str, Any]:
     """Run core/test_ipd.py live via unittest and return structured test results."""
     t0 = time.time()
     loader = unittest.TestLoader()
@@ -2217,6 +2248,7 @@ def start_human_match(opponent_id: str = "axl_TitForTat", seed: int = 42) -> dic
             oldest = next(iter(_PLAY_SESSIONS))
             _PLAY_SESSIONS.pop(oldest, None)
         _PLAY_SESSIONS[sid] = {
+            "owner": session_store.owner.get(),
             "opponent_id": opponent_id,
             "opp": opp,
             "human": human,
@@ -2236,7 +2268,7 @@ def step_human_match(session_id: str, human_move: str) -> dict[str, Any]:
     """Advance one round of Human-vs-AI and return move, payoffs, and AI internal insight."""
     with _PLAY_LOCK:
         sess = _PLAY_SESSIONS.get(session_id)
-        if sess is None:
+        if sess is None or sess["owner"] != session_store.owner.get():
             raise ValueError("Sesión de juego expirada; reinicia la partida.")
 
         opp: axl.Player = sess["opp"]
@@ -2377,11 +2409,11 @@ def get_axelrod1980_ring_data() -> dict[str, Any]:
 
     # Also compute each of the 5 AI generations against the 15 classics!
     gen_specs = [
-        ("gen1_rulito", "1. Rulito (Miope γ=0)", False, "Frecuentista miope (γ=0): colapsa a traición mutua"),
-        ("gen2_cloud", "2. Cloud (1-Step γ=0.90)", False, "Lookahead 1 paso con exploración inicial alternante"),
-        ("gen3_gary", "3. Expectimax H=4 + Markov", True, "Búsqueda en árbol de 256 hojas + heurística Markov"),
-        ("gen4_base", "4. Base MDP Fija (CDDC)", True, "Política Pavlov emergente del entorno 8×4 (sin aprendizaje online)"),
-        ("gen5_rl", "5. RL Olvido (n₀=2, λ=0.90)", True, "Actualiza online la matriz MDP 8×4 con contador efectivo"),
+        ("gen1_cloud", "1. Cloud (Miope γ=0)", False, "Taller IV Sec. 7: frecuentista miope (γ=0), colapsa a traición mutua"),
+        ("gen2_rulito", "2. Rulito (1-Step γ=0.90)", False, "Taller IV Sec. 8: Bellman 1-step (γ=0.90) con transición no condicionada"),
+        ("gen3_gary", "3. Expectimax H=2 + Markov", True, "Referencia de búsqueda: Expectimax H=2 (16 hojas) + cierre Markov"),
+        ("gen4_base", "4. Base MDP Fija (CDDC)", True, "Política Pavlov emergente de T_0 (sin aprendizaje online)"),
+        ("gen5_rl", "5. Mitcha (RL Olvido)", True, "MDP 8×4 online con contador efectivo n₀=2, λ=0.90"),
     ]
     generations_vs_15 = {}
     for gid, gname, gnice, gtrait in gen_specs:
@@ -2434,26 +2466,26 @@ def get_axelrod1980_ring_data() -> dict[str, Any]:
 
 def get_bootstrap_payload() -> dict[str, Any]:
     """Return all cached/initial data for near-instant frontend startup."""
-    mdp = compute_mdp_payload(gamma=0.90, laplace_alpha=0.0, initial_count=2.0, forgetting_factor=0.90)
+    mdp = compute_mdp_payload(gamma=0.90, initial_count=2.0, forgetting_factor=0.90)
     evolution = run_evolution_suite(turns=200, repetitions=5, seed=42, include_axelrod=False)
     online = run_online_learning_suite()
     gary = run_gary_dynamics()
     tournaments = load_verified_paper_tournaments()
     axelrod_ring = get_axelrod1980_ring_data()
 
-    # Paper verified lambda sweep (fast initial values matching resultados_experimento.png)
+    # Verified lambda sweep (tol=1e-6, seed=42, 5 reps)
     paper_lambda_sweep = {
         "initial_count": 2.0,
         "gamma": 0.90,
         "repetitions": 5,
         "seed": 42,
         "bars": [
-            {"label": "Sin Prior\n(0.50)", "mean": 2.010, "std": 0.025, "rank": 11, "color": "#78909c"},
-            {"label": "lam=0.70", "mean": 2.638, "std": 0.024, "rank": 1, "color": "#42a5f5"},
-            {"label": "lam=0.80", "mean": 2.633, "std": 0.029, "rank": 1, "color": "#00897b"},
-            {"label": "lam=0.85", "mean": 2.648, "std": 0.026, "rank": 1, "color": "#2e7d32"},
+            {"label": "Sin Prior\n(0.50)", "mean": 2.010, "std": 0.020, "rank": 11, "color": "#78909c"},
+            {"label": "lam=0.70", "mean": 2.638, "std": 0.021, "rank": 1, "color": "#42a5f5"},
+            {"label": "lam=0.80", "mean": 2.633, "std": 0.025, "rank": 1, "color": "#00897b"},
+            {"label": "lam=0.85", "mean": 2.648, "std": 0.027, "rank": 1, "color": "#2e7d32"},
             {"label": "lam=0.90", "mean": 2.662, "std": 0.024, "rank": 1, "color": "#1565c0"},
-            {"label": "lam=0.95", "mean": 2.661, "std": 0.036, "rank": 1, "color": "#6a1b9a"},
+            {"label": "lam=0.95", "mean": 2.661, "std": 0.051, "rank": 1, "color": "#6a1b9a"},
             {"label": "lam=1.0\n(sin olvido)", "mean": 2.641, "std": 0.027, "rank": 1, "color": "#8d6e63"},
             {"label": "Fija\n(eta=0)", "mean": 2.559, "std": 0.018, "rank": 3, "color": "#ef6c00"},
             {"label": "Tit For\nTat", "mean": 2.560, "std": 0.020, "rank": 3, "color": "#eab308"},

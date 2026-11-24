@@ -1,4 +1,10 @@
-"""Core MDP model, empirical frequency table, and Bellman solver for Iterated Prisoner's Dilemma."""
+"""Módulo MDP del Dilema del Prisionero Iterado (Taller 5 - Alonso Toro):
+- Estados de memoria-1: S = {CC, CD, DC, DD}
+- Acciones: A = {C, D} (8 contextos (s_{t-1}, A_t))
+- Tabla de frecuencias supervisada exacta: p_0(s, a) = K_{s,a} / N_{s,a} (N = 173,130 transiciones)
+- Matriz de transición del entorno 8x4: T_0[(s, a), s'] = P(s_t = s' | s_{t-1} = s, A_t = a)
+- Solver de Bellman mediante Value Iteration (gamma = 0.90) -> política base pi_0 = CDDC.
+"""
 
 from dataclasses import dataclass
 import axelrod as axl
@@ -19,7 +25,7 @@ STATE_MAP = {
     (D, D): 3,
 }
 
-# Standard Axelrod payoff matrix: (my_action, opp_action) -> my_reward
+# Matriz de pagos estándar de Axelrod: (mi_accion, accion_rival) -> pago
 PAYOFF = {
     (ACTION_C, ACTION_C): 3.0,
     (ACTION_C, ACTION_D): 0.0,
@@ -32,7 +38,7 @@ UNIFORM_PRIOR_P = {(s, a): 0.5 for s in range(4) for a in ACTIONS}
 
 @dataclass(frozen=True)
 class FrequencyTableResult:
-    """Empirical 8-context frequency table and induced 8x4 MDP transition matrix."""
+    """Tabla empírica de 8 contextos y matriz de transición 8x4 inducida."""
 
     counts_coop: dict[tuple[int, int], int]
     counts_total: dict[tuple[int, int], int]
@@ -43,16 +49,17 @@ class FrequencyTableResult:
 
 @dataclass(frozen=True)
 class BellmanResult:
-    """Optimal value functions V*(s), Q*(s, a), and deterministic policy pi_0[s]."""
+    """Funciones de valor V*(s), Q*(s, a), ventaja Delta Q*(s) y política determinista pi[s]."""
 
     v_values: list[float]
     q_values: dict[tuple[int, int], float]
     delta_q: list[float]
     policy: list[int]
+    iterations: int = 0
 
 
 def build_training_pool() -> list[axl.Player]:
-    """Return a diverse 30-strategy Axelrod pool for simulating environment transitions."""
+    """Retorna el conjunto diverso de 30 estrategias de Axelrod para estimar T_0."""
     strategy_classes = [
         axl.Cooperator,
         axl.Defector,
@@ -94,7 +101,7 @@ def _record_perspective(
     counts_coop: dict[tuple[int, int], int],
     counts_total: dict[tuple[int, int], int],
 ) -> None:
-    """Accumulate (s_{t-1}, A_t) -> O_t counts from one player's match trajectory."""
+    """Acumula conteos de ventanas de 2 turnos (s_{t-1}, A_t) -> O_t de un jugador."""
     for t in range(1, len(my_history)):
         prev_state = STATE_MAP[(my_history[t - 1], opp_history[t - 1])]
         my_action = ACTION_C if my_history[t] == C else ACTION_D
@@ -107,12 +114,11 @@ def _record_perspective(
 def build_mdp_transition_matrix(
     p_coop: dict[tuple[int, int], float],
 ) -> dict[tuple[int, int], dict[int, float]]:
-    """Build the full 8x4 MDP transition matrix P(s_t | s_{t-1}, A_t)."""
+    """Construye la matriz de transición completa 8x4 T[(s, a), s'] = P(s_t = s' | s_{t-1} = s, A_t = a)."""
     transitions: dict[tuple[int, int], dict[int, float]] = {}
     for s in range(4):
         for a in ACTIONS:
             p_c = p_coop[(s, a)]
-            # Next state is (A_t, O_t): fixed first coordinate, stochastic opponent response.
             if a == ACTION_C:
                 row = {0: p_c, 1: 1.0 - p_c, 2: 0.0, 3: 0.0}
             else:
@@ -126,9 +132,8 @@ def collect_frequency_table(
     turns: int = 200,
     repetitions: int = 1,
     seed: int | None = 42,
-    laplace_alpha: float = 0.0,
 ) -> FrequencyTableResult:
-    """Simulate round-robin Axelrod matches and estimate P(O_t=C | s_{t-1}, A_t) by counting."""
+    """Simula duelos todos contra todos y estima p_0(s, a) = K_{s,a} / N_{s,a} por conteo exacto."""
     keys = [(s, a) for s in range(4) for a in ACTIONS]
     counts_coop = {k: 0 for k in keys}
     counts_total = {k: 0 for k in keys}
@@ -147,14 +152,9 @@ def collect_frequency_table(
                 if match_seed is not None:
                     match_seed += 1
 
-    p_coop: dict[tuple[int, int], float] = {}
-    for k in keys:
-        total = counts_total[k]
-        if total == 0 and laplace_alpha == 0.0:
-            p_coop[k] = 0.5
-        else:
-            p_coop[k] = (counts_coop[k] + laplace_alpha) / (total + 2.0 * laplace_alpha)
-
+    p_coop: dict[tuple[int, int], float] = {
+        k: (counts_coop[k] / counts_total[k]) if counts_total[k] > 0 else 0.5 for k in keys
+    }
     mdp_transitions = build_mdp_transition_matrix(p_coop)
     return FrequencyTableResult(
         counts_coop=counts_coop,
@@ -172,7 +172,7 @@ def _compute_q_sa(
     action: int,
     gamma: float,
 ) -> float:
-    """Evaluate Bellman backup Q(s, a) given current state values V."""
+    """Evalúa Q(s, a) = p(s,a)[R(a,C) + gamma V((a,C))] + (1 - p(s,a))[R(a,D) + gamma V((a,D))]."""
     p_c = p_coop[(state, action)]
     s_next_c = 0 if action == ACTION_C else 2
     s_next_d = 1 if action == ACTION_C else 3
@@ -184,24 +184,50 @@ def _compute_q_sa(
 def solve_bellman(
     p_coop: dict[tuple[int, int], float],
     gamma: float = 0.90,
-    tol: float = 1e-9,
-    max_iter: int = 500,
+    tol: float = 1e-6,
+    max_iter: int = 2000,
 ) -> BellmanResult:
-    """Solve the 4-state IPD MDP via Value Iteration and return V*, Q*, and pi_0."""
-    v_values = [0.0, 0.0, 0.0, 0.0]
-    for _ in range(max_iter):
-        v_next = [
-            max(
-                _compute_q_sa(v_values, p_coop, s, ACTION_D, gamma),
-                _compute_q_sa(v_values, p_coop, s, ACTION_C, gamma),
-            )
-            for s in range(4)
-        ]
-        max_diff = max(abs(v_next[s] - v_values[s]) for s in range(4))
-        v_values = v_next
-        if max_diff < tol:
+    """Resuelve Bellman por Value Iteration hasta que max_s |V^(k)(s) - V^(k-1)(s)| <= tol (1e-6)."""
+    p0c = p_coop[(0, ACTION_C)]
+    p0d = p_coop[(0, ACTION_D)]
+    p1c = p_coop[(1, ACTION_C)]
+    p1d = p_coop[(1, ACTION_D)]
+    p2c = p_coop[(2, ACTION_C)]
+    p2d = p_coop[(2, ACTION_D)]
+    p3c = p_coop[(3, ACTION_C)]
+    p3d = p_coop[(3, ACTION_D)]
+
+    v0 = v1 = v2 = v3 = 0.0
+    iters = 0
+    for it in range(1, max_iter + 1):
+        iters = it
+        gv0 = gamma * v0
+        gv1 = gamma * v1
+        gv2 = gamma * v2
+        gv3 = gamma * v3
+
+        c_t = p0c * (3.0 + gv0) + (1.0 - p0c) * gv1
+        d_t = p0d * (5.0 + gv2) + (1.0 - p0d) * (1.0 + gv3)
+        n0 = c_t if c_t >= d_t else d_t
+
+        c_t = p1c * (3.0 + gv0) + (1.0 - p1c) * gv1
+        d_t = p1d * (5.0 + gv2) + (1.0 - p1d) * (1.0 + gv3)
+        n1 = c_t if c_t >= d_t else d_t
+
+        c_t = p2c * (3.0 + gv0) + (1.0 - p2c) * gv1
+        d_t = p2d * (5.0 + gv2) + (1.0 - p2d) * (1.0 + gv3)
+        n2 = c_t if c_t >= d_t else d_t
+
+        c_t = p3c * (3.0 + gv0) + (1.0 - p3c) * gv1
+        d_t = p3d * (5.0 + gv2) + (1.0 - p3d) * (1.0 + gv3)
+        n3 = c_t if c_t >= d_t else d_t
+
+        max_diff = max(abs(n0 - v0), abs(n1 - v1), abs(n2 - v2), abs(n3 - v3))
+        v0, v1, v2, v3 = n0, n1, n2, n3
+        if max_diff <= tol:
             break
 
+    v_values = [v0, v1, v2, v3]
     q_values = {
         (s, a): _compute_q_sa(v_values, p_coop, s, a, gamma) for s in range(4) for a in ACTIONS
     }
@@ -212,6 +238,7 @@ def solve_bellman(
         q_values=q_values,
         delta_q=delta_q,
         policy=policy,
+        iterations=iters,
     )
 
 
@@ -219,7 +246,7 @@ def compute_cumulative_avg_scores(
     my_history: list[axl.Action],
     opp_history: list[axl.Action],
 ) -> list[float]:
-    """Compute running mean points per round at each turn from match histories."""
+    """Calcula el puntaje medio acumulado por ronda en cada turno t = 1..T."""
     total = 0.0
     avgs: list[float] = []
     for t, (my_move, opp_move) in enumerate(zip(my_history, opp_history), start=1):

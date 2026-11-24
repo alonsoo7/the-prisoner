@@ -185,66 +185,75 @@ def save_summary_plot(
     comparison_scores: dict[str, tuple[float, float, int]],
     output_path: Path,
 ) -> None:
-    """Create a 2x2 summary visualization of the frequency table, Bellman, and RL results."""
-    fig, axes = plt.subplots(2, 2, figsize=(13, 9))
+    """Create a compact 1x4 horizontal summary visualization of the frequency table, Bellman, and RL results."""
+    fig, axes = plt.subplots(1, 4, figsize=(16.2, 3.85))
     fig.suptitle(
-        "Dilema del Prisionero Iterado: Tabla de Frecuencias (8 Contextos) + Bellman + Matriz Incremental (Olvido)",
-        fontsize=12.5,
+        "Dilema del Prisionero Iterado: Tabla de Frecuencias (8 Contextos) + Bellman (CDDC) + Aprendizaje Online con Olvido (Mitcha)",
+        fontsize=11.3,
         fontweight="bold",
+        y=1.02,
     )
 
     # Panel 1: 8-context empirical probabilities P(O_t=C | s_{t-1}, A_t)
-    ax = axes[0, 0]
+    ax = axes[0]
     x = np.arange(len(STATES))
-    width = 0.35
+    width = 0.36
     probs_c = [freq.p_coop[(s, ACTION_C)] for s in range(4)]
     probs_d = [freq.p_coop[(s, ACTION_D)] for s in range(4)]
     ax.bar(x - width / 2, probs_c, width, label="Si juego C (A_t=C)", color="#2e7d32")
     ax.bar(x + width / 2, probs_d, width, label="Si juego D (A_t=D)", color="#c62828")
     ax.set_xticks(x)
-    ax.set_xticklabels(STATES)
-    ax.set_ylim(0.0, 1.08)
-    ax.set_ylabel("P_hat(O_t = C | s_{t-1}, A_t)")
-    ax.set_title("1. Tabla de Frecuencias Empirica (8 Contextos)")
-    ax.legend(fontsize=8)
+    ax.set_xticklabels(STATES, fontsize=8.5)
+    ax.set_ylim(0.0, 1.12)
+    ax.set_ylabel("P_hat(O_t = C | s_{t-1}, A_t)", fontsize=8.5)
+    ax.set_title("1. Tabla de Frecuencias (8 Contextos)", fontsize=9.3, fontweight="bold")
+    ax.legend(fontsize=7.3, loc="upper right")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     # Panel 2: Bellman Q*(s, C) vs Q*(s, D)
-    ax = axes[0, 1]
+    ax = axes[1]
     q_c = [bellman.q_values[(s, ACTION_C)] for s in range(4)]
     q_d = [bellman.q_values[(s, ACTION_D)] for s in range(4)]
     ax.bar(x - width / 2, q_c, width, label="Q*(s, C)", color="#1565c0")
     ax.bar(x + width / 2, q_d, width, label="Q*(s, D)", color="#ef6c00")
     for s in range(4):
         top = max(q_c[s], q_d[s])
-        ax.text(s, top + 0.35, f"pi_0={ACTION_LABELS[bellman.policy[s]]}", ha="center", fontsize=8)
+        ax.text(
+            s,
+            top + 0.45,
+            f"pi_0={ACTION_LABELS[bellman.policy[s]]}",
+            ha="center",
+            fontsize=7.8,
+            fontweight="bold",
+        )
     ax.set_xticks(x)
-    ax.set_xticklabels(STATES)
-    ax.set_ylim(0.0, max(q_c + q_d) * 1.15)
-    ax.set_ylabel("Valor Esperado Descontado")
-    ax.set_title("2. Funcion de Valor de Bellman (gamma = 0.90)")
-    ax.legend(fontsize=8)
+    ax.set_xticklabels(STATES, fontsize=8.5)
+    ax.set_ylim(18.0, max(q_c + q_d) * 1.11)
+    ax.set_ylabel("Valor Descontado Q*(s, a)", fontsize=8.5)
+    ax.set_title("2. Bellman (gamma=0.90) -> pi_0=CDDC", fontsize=9.3, fontweight="bold")
+    ax.legend(fontsize=7.3, loc="upper right")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     # Panel 3: Online incremental transition update vs Defector
-    ax = axes[1, 0]
+    ax = axes[2]
     turns = np.arange(1, len(defector_trace["p_dd_c"]) + 1)
-    ax.plot(turns, defector_trace["p_dd_c"], label="P_t(C | DD, C)", color="#6a1b9a", marker="o", ms=3)
-    ax.plot(turns, defector_trace["p_cd_d"], label="P_t(C | CD, D)", color="#00838f", marker="s", ms=3)
+    ax.plot(turns, defector_trace["p_dd_c"], label="P_t(C | DD, C)", color="#6a1b9a", marker="o", ms=2.6)
+    ax.plot(turns, defector_trace["p_cd_d"], label="P_t(C | CD, D)", color="#00838f", marker="s", ms=2.6)
     ax2 = ax.twinx()
     ax2.plot(turns, defector_trace["delta_q_dd"], label="Delta Q_t(DD)", color="#d84315", linestyle="--")
     ax2.axhline(0.0, color="black", linestyle=":", linewidth=1)
-    ax.set_xlabel("Turno (t)")
-    ax.set_ylabel("Probabilidad Estimada P_t")
-    ax2.set_ylabel("Ventaja Delta Q_t(DD)")
-    ax.set_title("3. Adaptacion Online con Factor de Olvido vs Defector")
+    ax.axvline(7, color="#d84315", linestyle=":", linewidth=1.0, alpha=0.8)
+    ax.set_xlabel("Turno (t)", fontsize=8.5)
+    ax.set_ylabel("Probabilidad Estimada P_t", fontsize=8.5)
+    ax2.set_ylabel("Ventaja Delta Q_t(DD)", fontsize=8.2)
+    ax.set_title("3. Adaptacion Online vs Defector (t=7)", fontsize=9.3, fontweight="bold")
     lines1, labels1 = ax.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax.legend(lines1 + lines2, labels1 + labels2, fontsize=8, loc="upper right")
+    ax.legend(lines1 + lines2, labels1 + labels2, fontsize=6.9, loc="upper right")
     ax.grid(alpha=0.3)
 
     # Panel 4: Axelrod 1980 tournament comparison
-    ax = axes[1, 1]
+    ax = axes[3]
     labels = list(comparison_scores.keys())
     means = [comparison_scores[k][0] for k in labels]
     stds = [comparison_scores[k][1] for k in labels]
@@ -260,25 +269,29 @@ def save_summary_plot(
         "#ef6c00",
         "#fbc02d",
     ]
-    bars = ax.bar(range(len(labels)), means, yerr=stds, capsize=4, color=colors[: len(labels)])
+    bars = ax.bar(range(len(labels)), means, yerr=stds, capsize=2.5, color=colors[: len(labels)])
     ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels(labels, fontsize=7.5)
-    ax.set_ylim(0.0, max(means) * 1.22)
-    ax.set_ylabel("Puntos / Ronda (Axelrod 1980)")
-    ax.set_title("4. Comparacion por Factor de Olvido (lambda) en Axelrod 1980")
+    short_labels = [
+        lbl.replace("Sin Prior\n(0.50)", "SinPrior").replace("\n(sin olvido)", "*").replace("\n", " ")
+        for lbl in labels
+    ]
+    ax.set_xticklabels(short_labels, fontsize=6.8, rotation=25, ha="right")
+    ax.set_ylim(1.90, max(means) * 1.11)
+    ax.set_ylabel("Pts / Ronda (Axelrod 80)", fontsize=8.5)
+    ax.set_title("4. Sensibilidad a lambda en Axelrod 1980", fontsize=9.3, fontweight="bold")
     for bar, mean, rank in zip(bars, means, ranks):
         ax.text(
             bar.get_x() + bar.get_width() / 2,
-            mean + 0.06,
-            f"{mean:.3f}\n(#{rank})",
+            mean + 0.035,
+            f"{mean:.2f}\n(#{rank})",
             ha="center",
             va="bottom",
-            fontsize=7.5,
+            fontsize=6.2,
         )
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     plt.tight_layout()
-    fig.savefig(output_path, dpi=150)
+    fig.savefig(output_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -290,7 +303,7 @@ def main() -> None:
 
     # 1. Build 8-context frequency table from 30 diverse Axelrod strategies (no ML/gradients).
     pool = build_training_pool()
-    freq = collect_frequency_table(pool, turns=200, repetitions=1, seed=42, laplace_alpha=0.0)
+    freq = collect_frequency_table(pool, turns=200, repetitions=1, seed=42)
     print_frequency_table(freq)
 
     # 2. Solve Bellman Value Iteration to derive initial policy pi_0.

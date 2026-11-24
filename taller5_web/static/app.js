@@ -16,6 +16,8 @@
     gary: null,
     garyActiveTurn: 1,
     garyPlayTimer: null,
+    garyWalkthroughStep: "all",
+    garySelectedLeafIdx: null,
     tournamentsVerified: null,
     axelrodRing: null,
     ringInjectId: "none",
@@ -31,7 +33,7 @@
     duelActiveTurn: 1,
     duelPlayTimer: null,
     h2hSelected: [
-      "gen1_rulito", "gen2_cloud", "gen3_gary", "gen4_base", "gen5_rl",
+      "gen1_cloud", "gen2_rulito", "gen3_gary", "gen4_base", "gen5_rl",
       "axl_TitForTat", "axl_Grudger", "axl_Defector", "axl_Alternator", "rival_switch_50"
     ],
     liveTournSelected: ["gen3_gary", "gen4_base", "gen5_rl"],
@@ -55,23 +57,19 @@
     ],
     overview: [
       "Evolución de Agentes Inteligentes",
-      "De la miopía frecuentista y la búsqueda Expectimax al aprendizaje por refuerzo con olvido",
+      "De la miopía frecuentista y la búsqueda Expectimax al aprendizaje por refuerzo MDP con olvido",
     ],
     mdp: [
       "Modelo MDP (8×4) y Planificación de Bellman",
-      "Dinámica condicional P(Oₜ | sₜ₋₁, Aₜ), iteración de valores y actualización con factor de olvido",
+      "Dinámica condicional P(Oₜ | sₜ₋₁, Aₜ), iteración de valores (≤10⁻⁶) y actualización con factor de olvido",
     ],
     learning: [
       "Aprendizaje Online con Factor de Olvido",
       "Velocidad de adaptación, entornos no estacionarios, tasa variable ηₖ y evolución de Tₜ",
     ],
     gary: [
-      "Búsqueda Expectimax con Heurística de Markov",
-      "Inspección ronda a ronda de la ventana observada, cálculo en raíz y decisión final",
-    ],
-    future: [
-      "¿Posible Mejora a Futuro? — Jacinto (Taller 6)",
-      "Guacamayo Jacinto · Fusión de RL con Olvido (Mitcha) + Exploración Segura UCB en contextos no visitados",
+      "Referencia Expectimax (Gary · H=2)",
+      "Árbol Expectimax completo de 16 hojas (H=2, γ=0.90) con cierre terminal de cadena de Markov",
     ],
     arena: [
       "Duelos 1v1, Harper y Torneos en Vivo",
@@ -80,6 +78,10 @@
     studio: [
       "Constructor de Estrategias y Código Fuente",
       "Incorpora nuevas estrategias visuales o en Python y valida los invariantes del sistema",
+    ],
+    about: [
+      "Acerca de esta página (About)",
+      "Por qué construimos este laboratorio en TEL-351, inspiración en Veritasium y el benchmark de Harper et al.",
     ],
   };
 
@@ -91,12 +93,11 @@
     { id: "axl_Alternator", name: "Alternator", trait: "Alterna C, D, C, D..." },
     { id: "axl_Defector", name: "Defector", trait: "Siempre traiciona" },
     { id: "axl_Random", name: "Random", trait: "Azar puro 50/50" },
-    { id: "gen1_rulito", name: "Rulito (Canario Fiorino)", trait: "Gen 1 · Miope γ=0" },
-    { id: "gen2_cloud", name: "Cloud (Periquito Azul)", trait: "Gen 2 · 1-Step γ=0.9" },
-    { id: "gen3_gary", name: "Gary (Perro Negro/Blanco)", trait: "Gen 3 · Expectimax H=4" },
+    { id: "gen1_cloud", name: "Cloud (Periquito Azul)", trait: "Gen 1 · Miope γ=0" },
+    { id: "gen2_rulito", name: "Rulito (Canario Fiorino)", trait: "Gen 2 · 1-Step γ=0.90" },
+    { id: "gen3_gary", name: "Gary (Perro Negro/Blanco)", trait: "Gen 3 · Expectimax H=2" },
     { id: "gen4_base", name: "Base MDP (CDDC)", trait: "Gen 4 · Pavlov emergente" },
     { id: "gen5_rl", name: "Mitcha (Periquito Verde)", trait: "Gen 5 · RL Olvido" },
-    { id: "gen6_jacinto", name: "Jacinto (Guacamayo)", trait: "Gen 6 · RL + Safe UCB" },
   ];
 
   const $ = (id) => document.getElementById(id);
@@ -129,17 +130,56 @@
     }, 3200);
   }
 
+  const APP_BASE = window.location.pathname.endsWith("/")
+    ? window.location.pathname.slice(0, -1)
+    : window.location.pathname.replace(/\/[^/]*$/, "");
+
+  function appUrl(path) {
+    if (!path) return path;
+    if (path.startsWith("http://") || path.startsWith("https://")) return path;
+    return path.startsWith("/") ? `${APP_BASE}${path}` : `${APP_BASE}/${path}`;
+  }
+
+  function asText(value) {
+    const span = document.createElement("span");
+    span.textContent = String(value);
+    return span.innerHTML.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function setSanitizedTableBody(tbodyEl, rowsHtml) {
+    if (!tbodyEl) return;
+    const clean = DOMPurify.sanitize(`<table><tbody>${rowsHtml}</tbody></table>`, { RETURN_DOM: true });
+    const src = clean && clean.querySelector ? clean.querySelector("tbody") : null;
+    tbodyEl.innerHTML = src ? src.innerHTML : "";
+  }
+
+  function setSanitizedSelectOptions(selectEl, optionsHtml) {
+    if (!selectEl) return;
+    const clean = DOMPurify.sanitize(`<select>${optionsHtml}</select>`, { RETURN_DOM: true });
+    const src = clean && clean.querySelector ? clean.querySelector("select") : null;
+    selectEl.innerHTML = src ? src.innerHTML : "";
+  }
+
+  function sessionHeaders() {
+    let token = sessionStorage.getItem("ipd.session");
+    if (!token) {
+      token = Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, "0")).join("");
+      sessionStorage.setItem("ipd.session", token);
+    }
+    return {"X-IPD-Session":token};
+  }
+
   async function apiGet(url) {
-    const res = await fetch(url);
+    const res = await fetch(appUrl(url), {headers:sessionHeaders()});
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
   }
 
   async function apiPost(url, body = {}) {
-    const res = await fetch(url, {
+    const res = await fetch(appUrl(url), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { ...sessionHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     const data = await res.json();
@@ -148,7 +188,7 @@
   }
 
   async function apiDelete(url) {
-    const res = await fetch(url, { method: "DELETE" });
+    const res = await fetch(appUrl(url), { method: "DELETE", headers:sessionHeaders() });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
@@ -280,7 +320,7 @@
       const isSel = selectedArr.includes(it.id);
       const chip = document.createElement("span");
       chip.className = `strategy-chip ${isSel ? "selected" : ""}`;
-      chip.innerHTML = `<span class="dot" style="background:${it.color}"></span>${it.short}`;
+      chip.innerHTML = DOMPurify.sanitize(`<span class="dot" style="background:${it.color}"></span>${asText(it.short)}`);
       chip.title = `${it.name} (${it.group})`;
       chip.addEventListener("click", () => {
         const idx = selectedArr.indexOf(it.id);
@@ -317,16 +357,16 @@
       .map((c) => ({ id: c.id, name: c.short, trait: "Tu estrategia", color: c.color }));
     const cards = [...FEATURED_RIVALS, ...customs];
 
-    grid.innerHTML = cards
+    grid.innerHTML = DOMPurify.sanitize(cards
       .map(
         (c) => `
       <div class="char-card ${c.id === STATE.playOpponentId ? "active" : ""}" data-play-opp="${c.id}">
         ${T5Voxel.renderVoxelAvatar(c.id, { headOnly: true, size: 46, color: c.color })}
-        <div class="c-name">${c.name}</div>
+        <div class="c-name">${asText(c.name)}</div>
         <div class="c-trait">${c.trait}</div>
       </div>`
       )
-      .join("");
+      .join(""));
 
     grid.querySelectorAll("[data-play-opp]").forEach((el) => {
       el.addEventListener("click", () => startHumanGame(el.dataset.playOpp));
@@ -355,9 +395,9 @@
         turn: 0,
       };
       renderPlayStage();
-      $("play-insight-box").innerHTML = `
-        <h4>Nueva partida contra ${res.opponent_name}</h4>
-        <p>Elige <strong>Cooperar ($C$)</strong> o <strong>Traicionar ($D$)</strong> para jugar la ronda 1. Si ambos cooperan ganan $3$ pts cada uno; si traicionas a un cooperador ganas $5$ pts (y él $0$); si ambos traicionan ganan $1$ pt.</p>`;
+      $("play-insight-box").innerHTML = DOMPurify.sanitize(`
+        <h4>Nueva partida contra ${asText(res.opponent_name)}</h4>
+        <p>Elige <strong>Cooperar ($C$)</strong> o <strong>Traicionar ($D$)</strong> para jugar la ronda 1. Si ambos cooperan ganan $3$ pts cada uno; si traicionas a un cooperador ganas $5$ pts (y él $0$); si ambos traicionan ganan $1$ pt.</p>`);
       renderMath($("play-insight-box"));
     } catch (err) {
       toast(err.message, "error");
@@ -427,10 +467,10 @@
         }
       }
 
-      $("play-insight-box").innerHTML = `
+      $("play-insight-box").innerHTML = DOMPurify.sanitize(`
         <h4>Ronda ${res.turn} · Promedio: Tú ${res.human_avg.toFixed(2)} pts/r vs. ${STATE.playState.opponentName} ${res.opp_avg.toFixed(2)} pts/r</h4>
         <p>Jugaste <strong>${res.human_move}</strong> y tu rival jugó <strong>${res.opp_move}</strong>. ${outcomeDesc}</p>
-        ${aiLine}`;
+        ${aiLine}`);
       renderMath($("play-insight-box"));
     } catch (err) {
       toast(err.message, "error");
@@ -514,26 +554,26 @@
       .map((m) => `<span class="tok-dot ${m === "C" ? "tok-c" : "tok-d"}" style="width:16px;height:16px"></span>`)
       .join("");
 
-    $("ring-char-detail").innerHTML = `
+    $("ring-char-detail").innerHTML = DOMPurify.sanitize(`
       <div class="theorem-box" style="margin-bottom:0;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:14px;flex:1;min-width:240px">
-          ${T5Voxel.renderVoxelAvatar(sel.id, { side: "left", move: sel.nice ? "C" : "D", mood: sel.nice ? "happy" : "sneaky", size: 70 })}
-          <div>
+        <div style="display:flex;align-items:center;gap:14px;flex:1 1 260px;min-width:0">
+          <div style="flex-shrink:0">${T5Voxel.renderVoxelAvatar(sel.id, { side: "left", move: sel.nice ? "C" : "D", mood: sel.nice ? "happy" : "sneaky", size: 70 })}</div>
+          <div style="flex:1;min-width:0;overflow-wrap:anywhere">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <strong>${sel.name}</strong>
               <span class="badge ${sel.isInjected ? "badge-purple" : sel.nice ? "badge-c" : "badge-d"}">${sel.isInjected ? "Agente IA" : sel.nice ? "Nice" : "Nasty"}</span>
               <span class="mono" style="font-size:12.5px"><strong>${Math.round(sel.avg_total)} pts</strong> (${sel.avg_round.toFixed(3)}/r)</span>
             </div>
             <p style="margin:4px 0 6px;font-size:12.8px">${sel.trait}</p>
-            <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-muted)">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--ink-muted)">
               <span>Firma ante sonda:</span> ${sigHtml} <span style="margin-left:6px">vs</span> ${oppSigHtml}
             </div>
           </div>
         </div>
-        <div class="btn-group">
+        <div class="btn-group" style="flex-shrink:0">
           <button class="btn btn-primary btn-sm" id="btn-ring-play-vs">🎮 Jugar contra ${sel.short.slice(0, 12)}</button>
         </div>
-      </div>`;
+      </div>`);
 
     $("btn-ring-play-vs").addEventListener("click", () => {
       switchTab("play");
@@ -547,7 +587,7 @@
     const maxPts = Math.max(550, ...ranked.map((r) => r.avg_total));
 
     const lb = $("axelrod-voxel-leaderboard");
-    lb.innerHTML = ranked
+    lb.innerHTML = DOMPurify.sanitize(ranked
       .map((r, pos) => {
         const rowCls = r.isInjected ? "is-ai" : r.nice ? "is-nice" : "is-nasty";
         const barCol = r.isInjected ? "#7b3fa0" : r.nice ? "#16a34a" : "#dc2626";
@@ -561,7 +601,7 @@
           <div class="axelrod-lb-bar-track"><div class="axelrod-lb-bar-fill" style="width:${pct}%;background:${barCol}"></div></div>
         </div>`;
       })
-      .join("");
+      .join(""));
 
     lb.querySelectorAll("[data-lbidx]").forEach((el) => {
       el.addEventListener("click", () => {
@@ -669,10 +709,10 @@
       yLabel: "Promedio acumulado / ronda",
     });
 
-    const genIds = ["gen1_rulito", "gen2_cloud", "gen3_gary", "gen4_base", "gen5_rl"];
+    const genIds = ["gen1_cloud", "gen2_rulito", "gen3_gary", "gen4_base", "gen5_rl"];
     const genMeta = {
-      gen1_rulito: { label: "1. Rulito", color: "#d62728" },
-      gen2_cloud: { label: "2. Cloud", color: "#ef6c00" },
+      gen1_cloud: { label: "1. Cloud", color: "#d62728" },
+      gen2_rulito: { label: "2. Rulito", color: "#ef6c00" },
       gen3_gary: { label: "3. Expectimax", color: "#7b3fa0" },
       gen4_base: { label: "4. Base CDDC", color: "#1565c0" },
       gen5_rl: { label: "5. Mitcha (RL)", color: "#2e7d32" },
@@ -687,18 +727,18 @@
 
     const tbody = $("tbody-paper-summary");
     const rowsData = [
-      ["Torneo Axelrod 1980", "16 jug. · 10 seeds", "1.921 (#11)", "2.449 (#6)", "2.686 (#1)", "2.539 (#4)", "2.632 (#1)", "tab:axelrod"],
-      ["Ecosistema Harper et al.", "41 jug. · 10 seeds", "2.075 (#32)", "2.382 (#25)", "2.808 (#2)", "2.559 (#22)", "2.613 (#17)", "tourn-harper-mega"],
-      ["Mega-Torneo General", "175 estrategias", "1.903 (#154)", "2.365 (#119)", "2.847 (#10)", "2.582 (#100)", "2.788 (#23)", "tourn-harper-mega"],
-      ["Duelo vs TitForTat", "1v1 · T=200", evo.condition_scores.gen1_rulito["TitForTat"], evo.condition_scores.gen2_cloud["TitForTat"], evo.condition_scores.gen3_gary["TitForTat"], evo.condition_scores.gen4_base["TitForTat"], evo.condition_scores.gen5_rl["TitForTat"], "duel:axl_TitForTat"],
-      ["Duelo vs Grudger", "1v1 · T=200", evo.condition_scores.gen1_rulito["Grudger"], evo.condition_scores.gen2_cloud["Grudger"], evo.condition_scores.gen3_gary["Grudger"], evo.condition_scores.gen4_base["Grudger"], evo.condition_scores.gen5_rl["Grudger"], "duel:axl_Grudger"],
-      ["Duelo vs Defector", "1v1 · T=200", evo.condition_scores.gen1_rulito["Defector"], evo.condition_scores.gen2_cloud["Defector"], evo.condition_scores.gen3_gary["Defector"], evo.condition_scores.gen4_base["Defector"], evo.condition_scores.gen5_rl["Defector"], "duel:axl_Defector"],
-      ["Duelo vs Alternator", "1v1 · T=200", evo.condition_scores.gen1_rulito["Alternator"], evo.condition_scores.gen2_cloud["Alternator"], evo.condition_scores.gen3_gary["Alternator"], evo.condition_scores.gen4_base["Alternator"], evo.condition_scores.gen5_rl["Alternator"], "duel:axl_Alternator"],
-      ["Cambio de régimen C → D", "1v1 · T=200", evo.condition_scores.gen1_rulito["Cambio C->D"], evo.condition_scores.gen2_cloud["Cambio C->D"], evo.condition_scores.gen3_gary["Cambio C->D"], evo.condition_scores.gen4_base["Cambio C->D"], evo.condition_scores.gen5_rl["Cambio C->D"], "duel:rival_switch_50"],
-      ["Tres fases C − D − C", "1v1 · T=200", evo.condition_scores.gen1_rulito["3 Fases C-D-C"], evo.condition_scores.gen2_cloud["3 Fases C-D-C"], evo.condition_scores.gen3_gary["3 Fases C-D-C"], evo.condition_scores.gen4_base["3 Fases C-D-C"], evo.condition_scores.gen5_rl["3 Fases C-D-C"], "duel:rival_3phase"],
+      ["Torneo Axelrod 1980", "16 jug. · 10 seeds", "1.939 (#11)", "2.473 (#6)", "2.688 (#1)", "2.544 (#4)", "2.650 (#1)", "tab:axelrod"],
+      ["Ecosistema Harper et al.", "37 jug. · 10 seeds", "2.124 (#26)", "2.434 (#22)", "2.850 (#4)", "2.579 (#20)", "2.685 (#15)", "tourn-harper-mega"],
+      ["Mega-Torneo General", "171 jug. · eval. indiv.", "1.884 (#153)", "2.368 (#115)", "2.853 (#13)", "2.576 (#99)", "2.795 (#21)", "tourn-harper-mega"],
+      ["Duelo vs TitForTat", "1v1 · T=200", evo.condition_scores.gen1_cloud["TitForTat"], evo.condition_scores.gen2_rulito["TitForTat"], evo.condition_scores.gen3_gary["TitForTat"], evo.condition_scores.gen4_base["TitForTat"], evo.condition_scores.gen5_rl["TitForTat"], "duel:axl_TitForTat"],
+      ["Duelo vs Grudger", "1v1 · T=200", evo.condition_scores.gen1_cloud["Grudger"], evo.condition_scores.gen2_rulito["Grudger"], evo.condition_scores.gen3_gary["Grudger"], evo.condition_scores.gen4_base["Grudger"], evo.condition_scores.gen5_rl["Grudger"], "duel:axl_Grudger"],
+      ["Duelo vs Defector", "1v1 · T=200", evo.condition_scores.gen1_cloud["Defector"], evo.condition_scores.gen2_rulito["Defector"], evo.condition_scores.gen3_gary["Defector"], evo.condition_scores.gen4_base["Defector"], evo.condition_scores.gen5_rl["Defector"], "duel:axl_Defector"],
+      ["Duelo vs Alternator", "1v1 · T=200", evo.condition_scores.gen1_cloud["Alternator"], evo.condition_scores.gen2_rulito["Alternator"], evo.condition_scores.gen3_gary["Alternator"], evo.condition_scores.gen4_base["Alternator"], evo.condition_scores.gen5_rl["Alternator"], "duel:axl_Alternator"],
+      ["Cambio de régimen C → D", "1v1 · T=200", evo.condition_scores.gen1_cloud["Cambio C->D"], evo.condition_scores.gen2_rulito["Cambio C->D"], evo.condition_scores.gen3_gary["Cambio C->D"], evo.condition_scores.gen4_base["Cambio C->D"], evo.condition_scores.gen5_rl["Cambio C->D"], "duel:rival_switch_50"],
+      ["Tres fases C − D − C", "1v1 · T=200", evo.condition_scores.gen1_cloud["3 Fases C-D-C"], evo.condition_scores.gen2_rulito["3 Fases C-D-C"], evo.condition_scores.gen3_gary["3 Fases C-D-C"], evo.condition_scores.gen4_base["3 Fases C-D-C"], evo.condition_scores.gen5_rl["3 Fases C-D-C"], "duel:rival_3phase"],
     ];
 
-    tbody.innerHTML = rowsData
+    setSanitizedTableBody(tbody, rowsData
       .map((r) => {
         const fmt = (v) => (typeof v === "number" ? v.toFixed(3) : v);
         const btn = r[7].startsWith("duel:")
@@ -713,7 +753,7 @@
           <td>${btn}</td>
         </tr>`;
       })
-      .join("");
+      .join(""));
 
     tbody.querySelectorAll("[data-open-duel]").forEach((b) => {
       b.addEventListener("click", () => {
@@ -736,8 +776,13 @@
     const mdp = STATE.mdp;
     if (!mdp) return;
 
+    const mitchaBox = $("mitcha-hero-avatar");
+    if (mitchaBox && window.T5Voxel) {
+      mitchaBox.innerHTML = DOMPurify.sanitize(window.T5Voxel.renderVoxelAvatar("gen5_rl", { headOnly: true, size: 78 }));
+    }
+
     $("mdp-policy-badge").textContent = mdp.policy_str;
-    $("mdp-pol-summary-pill").textContent = `π₀ = ${mdp.policy_str}`;
+    $("mdp-pol-summary-pill").textContent = `π₀ = ${mdp.policy_str} (${mdp.bellman_iterations || 141} iters · ΔV≤1e-6)`;
     if ($("mdp-lab-pol-pill")) $("mdp-lab-pol-pill").textContent = `π₀ = ${mdp.policy_str}`;
     $("kpi-transitions").textContent = mdp.total_transitions.toLocaleString("en-US");
 
@@ -788,7 +833,7 @@
     renderLambdaSweepChart();
 
     const tbody = $("tbody-mdp-table1");
-    tbody.innerHTML = mdp.contexts
+    setSanitizedTableBody(tbody, mdp.contexts
       .map((ctx, idx) => {
         const bRow = mdp.bellman[Math.floor(idx / 2)];
         const showBellman = idx % 2 === 0;
@@ -814,14 +859,14 @@
           ${bCells}
         </tr>`;
       })
-      .join("");
+      .join(""));
 
     const sliderBox = $("mdp-prob-sliders");
     if (!sliderBox.dataset.built) {
       sliderBox.dataset.built = "1";
-      sliderBox.innerHTML = mdp.contexts
+      sliderBox.innerHTML = DOMPurify.sanitize(mdp.contexts
         .map((ctx) => `<div class="prob-slider-card"><div class="top"><span class="mono">p₀${ctx.label}</span><span class="mono" id="lbl-p-${ctx.key}">${ctx.p_coop.toFixed(4)}</span></div><input type="range" min="0" max="1" step="0.01" value="${ctx.p_coop}" data-pkey="${ctx.key}" /></div>`)
-        .join("");
+        .join(""));
       let debounce = null;
       sliderBox.querySelectorAll("input[data-pkey]").forEach((inp) => {
         inp.addEventListener("input", () => {
@@ -868,7 +913,6 @@
     try {
       STATE.mdp = await apiPost("/api/mdp", {
         gamma: parseFloat($("mdp-gamma").value),
-        laplace_alpha: parseFloat($("mdp-laplace").value) || 0,
         initial_count: parseFloat($("mdp-n0").value),
         forgetting_factor: parseFloat($("mdp-lam").value),
         custom_p_coop: STATE.customP,
@@ -878,18 +922,73 @@
     } catch (err) { toast(err.message, "error"); }
   }
 
+  const THM2_CONTEXTS = {
+    "0_1": { label: "(CC, C)", p0: 0.9530 },
+    "3_1": { label: "(DD, C)", p0: 0.2586 },
+    "1_0": { label: "(CD, D)", p0: 0.5128 },
+    "2_0": { label: "(DC, D)", p0: 0.4818 },
+  };
+
+  function syncMdpThm2Sliders(n0Val, lamVal) {
+    const n0 = Number.isFinite(n0Val) ? n0Val : 2.0;
+    const lam = Number.isFinite(lamVal) ? lamVal : 0.90;
+    if ($("mdp-n0")) $("mdp-n0").value = n0;
+    if ($("lbl-mdp-n0")) $("lbl-mdp-n0").textContent = n0.toFixed(1);
+    if ($("thm2-n0")) $("thm2-n0").value = n0;
+    if ($("lbl-thm2-n0")) $("lbl-thm2-n0").textContent = n0.toFixed(1);
+    if ($("mdp-lam")) $("mdp-lam").value = lam;
+    if ($("lbl-mdp-lam")) $("lbl-mdp-lam").textContent = lam.toFixed(2);
+    if ($("thm2-lam")) $("thm2-lam").value = lam;
+    if ($("lbl-thm2-lam")) $("lbl-thm2-lam").textContent = lam.toFixed(2);
+  }
+
   function renderTheorem2Sim() {
-    const p0 = 0.953, n0 = parseFloat($("mdp-n0").value) || 2.0, lam = parseFloat($("mdp-lam").value) || 0.9;
+    const ctxKey = ($("thm2-context") && $("thm2-context").value) || "0_1";
+    const meta = THM2_CONTEXTS[ctxKey] || THM2_CONTEXTS["0_1"];
+    let p0 = meta.p0;
+    if (STATE.mdp && Array.isArray(STATE.mdp.contexts)) {
+      const found = STATE.mdp.contexts.find((c) => c.key === ctxKey);
+      if (found && typeof found.p_coop === "number") p0 = found.p_coop;
+    }
+    const n0 = parseFloat($("mdp-n0").value) || 2.0;
+    const lam = parseFloat($("mdp-lam").value) || 0.90;
+    syncMdpThm2Sliders(n0, lam);
+
     let nF = n0, pF = p0, nNF = n0, pNF = p0;
     const pFSeries = [p0], pNFSeries = [p0];
-    const rows = [{ k: 0, ev: "Prior p₀", n: n0, eta: null, pf: p0, pnf: p0 }];
+    const rows = [{ k: 0, ev: "INIT", n: n0, eta: null, etaNF: null, pf: p0, pnf: p0 }];
 
     STATE.thm2Events.forEach((y, idx) => {
       nF = lam * nF + 1.0; const etaF = 1.0 / nF; pF = (1 - etaF) * pF + etaF * y;
       nNF = nNF + 1.0; const etaNF = 1.0 / nNF; pNF = (1 - etaNF) * pNF + etaNF * y;
       pFSeries.push(pF); pNFSeries.push(pNF);
-      rows.push({ k: idx + 1, ev: y === 1 ? "SUMAR" : "RESTAR", n: nF, eta: etaF, pf: pF, pnf: pNF });
+      rows.push({ k: idx + 1, ev: y === 1 ? "C" : "D", n: nF, eta: etaF, etaNF, pf: pF, pnf: pNF });
     });
+
+    const summaryEl = $("thm2-live-summary");
+    if (summaryEl) {
+      const n1 = lam * n0 + 1.0;
+      const eta1 = 100.0 / n1;
+      const eta50NoForget = 100.0 / (n0 + 50.0);
+      let msgHtml = "";
+      if (lam >= 0.9999) {
+        summaryEl.classList.add("is-no-forget");
+        msgHtml = `<strong>Con tus parámetros ($n_0 = ${n0.toFixed(1)}$, $\\lambda = 1.00$, sin olvido):</strong> la 1.ª jugada pesa $\\eta_1 = ${eta1.toFixed(1)}\\%$ ($n_1 = ${n1.toFixed(2)}$), pero al no olvidar el pasado $n_k = n_0 + k$ crece sin límite y tras $50$ visitas cada jugada nueva cae a <strong>${eta50NoForget.toFixed(1)}%</strong>. Por eso ambas curvas coinciden.`;
+      } else {
+        summaryEl.classList.remove("is-no-forget");
+        const nInf = 1.0 / (1.0 - lam);
+        const etaInf = (1.0 - lam) * 100.0;
+        if (Math.abs(n0 - nInf) < 0.05) {
+          msgHtml = `<strong>Con tus parámetros ($n_0 = ${n0.toFixed(1)}$, $\\lambda = ${lam.toFixed(2)}$):</strong> como $n_0$ ya coincide con el techo $n_\\infty = \\frac{1}{1-\\lambda} = ${nInf.toFixed(1)}$ ($${lam.toFixed(2)} \\times ${nInf.toFixed(1)} + 1 = ${nInf.toFixed(1)}$), el contador permanece fijo en $n_k = ${nInf.toFixed(1)}$ y cada jugada nueva pesa exactamente <strong>$\\eta_k = ${etaInf.toFixed(1)}\\%$</strong> desde el inicio (frente a <strong>${eta50NoForget.toFixed(1)}%</strong> tras 50 visitas sin olvido).`;
+        } else if (n0 < nInf) {
+          msgHtml = `<strong>Con tus parámetros ($n_0 = ${n0.toFixed(1)}$, $\\lambda = ${lam.toFixed(2)}$):</strong> la 1.ª jugada pesa <strong>$\\eta_1 = ${eta1.toFixed(1)}\\%$</strong> ($n_1 = ${n1.toFixed(2)}$) para reaccionar rápido; luego $n_k$ sube hasta su <strong>techo exacto $n_\\infty = \\frac{1}{1-\\lambda} = ${nInf.toFixed(1)}$</strong>, garantizando que toda jugada reciente pese al menos <strong>$\\eta_\\infty = ${etaInf.toFixed(1)}\\%$</strong> (frente a solo <strong>${eta50NoForget.toFixed(1)}%</strong> tras 50 visitas si $\\lambda = 1.00$).`;
+        } else {
+          msgHtml = `<strong>Con tus parámetros ($n_0 = ${n0.toFixed(1)}$, $\\lambda = ${lam.toFixed(2)}$):</strong> partes con alta confianza inicial ($n_0 = ${n0.toFixed(1)}$), pero el olvido hace descender $n_k$ hacia su techo $n_\\infty = \\frac{1}{1-\\lambda} = ${nInf.toFixed(1)}$, subiendo el peso de las jugadas nuevas desde $\\eta_1 = ${eta1.toFixed(1)}\\%$ hasta <strong>$\\eta_\\infty = ${etaInf.toFixed(1)}\\%$</strong> (frente a <strong>${eta50NoForget.toFixed(1)}%</strong> tras 50 visitas si $\\lambda = 1.00$).`;
+        }
+      }
+      summaryEl.innerHTML = DOMPurify.sanitize(msgHtml);
+      renderMath(summaryEl);
+    }
 
     T5Charts.renderLineChart($("cv-thm2-sim"), {
       xStart: 0,
@@ -900,14 +999,27 @@
       ],
       yMin: 0,
       yMax: 1.05,
-      xLabel: "Visitas al contexto (CC, C)",
+      xLabel: `Visitas al contexto ${meta.label} · p₀ = ${p0.toFixed(4)}`,
       yLabel: "Probabilidad p_k",
     });
 
-    const tail = rows.length > 25 ? [rows[0], ...rows.slice(-24)] : rows;
-    $("tbody-thm2-sim").innerHTML = tail
-      .map((r) => `<tr><td class="mono">${r.k}</td><td>${r.ev === "SUMAR" ? '<span class="badge badge-c">y=1 SUMAR</span>' : r.ev === "RESTAR" ? '<span class="badge badge-d">y=0 RESTAR</span>' : '<span class="badge badge-gray">Inicial</span>'}</td><td class="mono text-right">${r.n.toFixed(3)}</td><td class="mono text-right">${r.eta == null ? "—" : r.eta.toFixed(4)}</td><td class="mono text-right" style="color:#1565c0;font-weight:700">${r.pf.toFixed(4)}</td><td class="mono text-right" style="color:#8e24aa">${r.pnf.toFixed(4)}</td></tr>`)
-      .join("");
+    const truncated = rows.length > 25;
+    const tail = truncated ? [rows[0], null, ...rows.slice(-24)] : rows;
+    setSanitizedTableBody($("tbody-thm2-sim"), tail
+      .map((r) => {
+        if (!r) {
+          return `<tr><td colspan="7" class="text-center muted" style="font-style:italic">⋯ visitas intermedias 1–${rows.length - 25} (el contador se acerca a su techo) ⋯</td></tr>`;
+        }
+        const badge = r.ev === "C"
+          ? '<span class="badge badge-c">C (1)</span>'
+          : r.ev === "D"
+            ? '<span class="badge badge-d">D (0)</span>'
+            : '<span class="badge badge-gray">Inicio</span>';
+        const etaStr = r.eta == null ? "—" : `${(r.eta * 100).toFixed(1)}%`;
+        const etaNFStr = r.etaNF == null ? "—" : `${(r.etaNF * 100).toFixed(1)}%`;
+        return `<tr><td class="mono">${r.k}</td><td>${badge}</td><td class="mono text-right">${r.n.toFixed(2)}</td><td class="mono text-right" style="color:#1565c0;font-weight:700">${etaStr}</td><td class="mono text-right" style="color:#8e24aa">${etaNFStr}</td><td class="mono text-right" style="color:#1565c0;font-weight:700">${r.pf.toFixed(4)}</td><td class="mono text-right" style="color:#8e24aa">${r.pnf.toFixed(4)}</td></tr>`;
+      })
+      .join(""));
   }
 
   // =========================================================================
@@ -1016,93 +1128,194 @@
     const movesR = steps.map((x) => x.opp_move);
     const scG = steps.map((x) => x.round_score);
     const scR = steps.map((x) => (x.outcome_state === "CC" ? 3 : x.outcome_state === "CD" ? 5 : x.outcome_state === "DC" ? 0 : 1));
-    $("gary-window-strip").innerHTML = buildTurnWindowHTML(movesG, movesR, scG, scR, t);
+    $("gary-window-strip").innerHTML = DOMPurify.sanitize(buildTurnWindowHTML(movesG, movesR, scG, scR, t));
 
     const sNames = ["CC", "CD", "DC", "DD"];
     const obsLine = st.is_opening
-      ? `<p class="muted" style="margin:0">Sin historial previo: abre con cooperación (<strong>regla Nice</strong>).</p>`
-      : `<p style="margin:0;font-size:13px">En la ventana previa se observó <strong>${st.updated_state} $\\to O_{t-1} = ${st.opp_observed}$</strong>. Estado actual en raíz: <span class="badge badge-purple">${st.current_state}</span> con $p = E_t[${st.current_state}] = ${st.p_c.toFixed(4)}$.</p>`;
+      ? `<p class="muted" style="margin:0;font-size:12.6px">Turno 1 sin historial: cuenta $0/0$ en los 4 estados y abre con <strong>Cooperar ($C$)</strong>.</p>`
+      : `<p style="margin:0 0 6px;font-size:12.6px">Acabamos de observar <strong>${st.updated_state} $\\to$ rival jugó ${st.opp_observed}</strong> (sumó $+1$ en la fila ★). Estado hoy en raíz: <span class="badge badge-purple">${st.current_state}</span> $\\Rightarrow p(C\\mid ${st.current_state}) = ${st.p_c.toFixed(2)}$.</p>`;
 
-    $("gary-step1-body").innerHTML = obsLine + `
-      <div class="table-wrap"><table class="data-table">
-        <thead><tr><th>Estado</th><th class="text-right">Conteo $C / (C+D)$</th><th class="text-right">$E_t[s]$</th></tr></thead>
+    $("gary-step1-body").innerHTML = DOMPurify.sanitize(obsLine + `
+      <div class="table-wrap"><table class="data-table table-compact">
+        <thead><tr><th>Tras</th><th class="text-right">C / Total</th><th class="text-right">$p = E_t[s]$</th></tr></thead>
         <tbody>${sNames.map((sn, i) => {
           const [nc, nd] = st.counts[i];
-          return `<tr class="${sn === st.current_state ? "highlight-gary" : ""}"><td class="mono"><strong>${sn}</strong>${sn === st.updated_state ? " ★" : ""}</td><td class="mono text-right">${nc} / ${nc + nd}</td><td class="mono text-right"><strong>${st.E[i].toFixed(4)}</strong></td></tr>`;
+          const tot = nc + nd;
+          const pct = Math.round(st.E[i] * 100);
+          const note = tot === 0 ? `<span class="muted" style="font-size:10px"> (0 visitas)</span>` : "";
+          return `<tr class="${sn === st.current_state ? "highlight-gary" : ""}">
+            <td class="mono"><strong>${sn}</strong>${sn === st.updated_state ? " ★" : ""}</td>
+            <td class="mono text-right">${nc}/${tot}${note}</td>
+            <td class="mono text-right"><strong>${st.E[i].toFixed(2)}</strong><div style="height:4px;background:#e2e8f0;border-radius:3px;margin-top:2px;overflow:hidden"><div style="width:${pct}%;height:100%;background:#7b3fa0"></div></div></td>
+          </tr>`;
         }).join("")}</tbody>
-      </table></div>`;
+      </table></div>`);
     renderMath($("gary-step1-body"));
 
-    $("gary-step2-body").innerHTML = `
-      <p style="margin:0;font-size:12.8px">Se resuelve $(I_4 - \\gamma P_{\\mathrm{TFT}}(E_t))^{-1} P_{\\mathrm{TFT}}(E_t)\\mathbf{R}$ y se descuenta por $\\gamma^${g.horizon} = ${Math.pow(g.gamma, g.horizon).toFixed(4)}$:</p>
-      <div class="table-wrap"><table class="data-table">
+    const Lgamma = 1 / Math.max(1e-6, 1 - g.gamma);
+    const Lstr = Math.abs(Lgamma - Math.round(Lgamma)) < 0.05 ? String(Math.round(Lgamma)) : Lgamma.toFixed(1);
+    $("gary-step2-body").innerHTML = DOMPurify.sanitize(`
+      <p style="margin:0 0 6px;font-size:12.5px">Estima el futuro desde el turno $+${g.horizon + 1}$ asumiendo reciprocidad, y lo trae al presente multiplicando por $\\gamma^${g.horizon} = ${Math.pow(g.gamma, g.horizon).toFixed(2)}$:</p>
+      <div class="table-wrap"><table class="data-table table-compact">
         <thead><tr><th>Hoja $s_H$</th><th class="text-right">$V_{\\mathrm{Markov}}$</th><th class="text-right">$h = \\gamma^H V$</th></tr></thead>
-        <tbody>${sNames.map((sn, i) => `<tr class="${sn === st.current_state ? "highlight-gary" : ""}"><td class="mono"><strong>${sn}</strong></td><td class="mono text-right">${st.v_markov[i].toFixed(2)}</td><td class="mono text-right"><strong>${st.leaf_h[i].toFixed(2)}</strong></td></tr>`).join("")}</tbody>
-      </table></div>`;
+        <tbody>${sNames.map((sn, i) => `<tr class="${sn === st.current_state ? "highlight-gary" : ""}"><td class="mono"><strong>${sn}</strong></td><td class="mono text-right">${st.v_markov[i].toFixed(1)}</td><td class="mono text-right" style="color:#5b21b6"><strong>+${st.leaf_h[i].toFixed(1)}</strong></td></tr>`).join("")}</tbody>
+      </table></div>
+      <p class="muted" style="margin:5px 0 0;font-size:11.5px">En cada hoja: $(g + h) \\div ${Lstr} = \\bar{f}$ pts/ronda.</p>`);
     renderMath($("gary-step2-body"));
 
     const chooseC = st.chosen === "C";
     const diff = st.f_c - st.f_d;
     const eqBlock = st.is_opening
       ? `<div class="math-block">$$A_1 = C \\quad (\\text{apertura cooperativa fija})$$</div>`
-      : `<div class="math-block">$$\\bar{f}_t(C) = ${st.p_c.toFixed(2)}\\cdot ${st.val_cc.toFixed(3)} + ${st.p_d.toFixed(2)}\\cdot ${st.val_cd.toFixed(3)} = \\mathbf{${st.f_c.toFixed(4)}}$$</div>
-         <div class="math-block">$$\\bar{f}_t(D) = ${st.p_c.toFixed(2)}\\cdot ${st.val_dc.toFixed(3)} + ${st.p_d.toFixed(2)}\\cdot ${st.val_dd.toFixed(3)} = \\mathbf{${st.f_d.toFixed(4)}}$$</div>`;
+      : `<div class="math-block">$$\\bar{f}_t(C) = ${st.p_c.toFixed(2)}\\cdot ${st.val_cc.toFixed(2)} + ${st.p_d.toFixed(2)}\\cdot ${st.val_cd.toFixed(2)} = \\mathbf{${st.f_c.toFixed(3)}}$$</div>
+         <div class="math-block">$$\\bar{f}_t(D) = ${st.p_c.toFixed(2)}\\cdot ${st.val_dc.toFixed(2)} + ${st.p_d.toFixed(2)}\\cdot ${st.val_dd.toFixed(2)} = \\mathbf{${st.f_d.toFixed(3)}}$$</div>`;
 
-    $("gary-step3-body").innerHTML = `${eqBlock}
+    $("gary-step3-body").innerHTML = DOMPurify.sanitize(`${eqBlock}
       <div class="decision-verdict ${chooseC ? "choose-c" : "choose-d"}">
         ${chooseC ? "f̄(C) ≥ f̄(D) → Elige COOPERAR (C)" : "f̄(D) > f̄(C) → Elige TRAICIONAR (D)"}
         <div class="mono" style="font-size:11.5px;margin-top:2px">Margen Δf̄ = ${diff >= 0 ? "+" : ""}${diff.toFixed(4)} · Rival jugó ${st.opp_move} → ${st.outcome_state} (+${st.round_score} pts)</div>
-      </div>`;
+      </div>`);
     renderMath($("gary-step3-body"));
 
+    // Pick a sensible default highlighted leaf (most probable optimal leaf on the chosen branch)
+    let defLeaf = 0;
+    if (st.tree_h2 && st.tree_h2.level1) {
+      const rootIdxOffset = chooseC ? 0 : 2;
+      const l1Idx = rootIdxOffset + (st.tree_h2.p_c >= 0.5 ? 0 : 1);
+      const n1 = st.tree_h2.level1[l1Idx];
+      const act2Offset = n1.chosen === "C" ? 0 : 2;
+      const opp2Offset = n1.p_c >= 0.5 ? 0 : 1;
+      defLeaf = l1Idx * 4 + act2Offset + opp2Offset;
+    }
+    STATE.garySelectedLeafIdx = defLeaf;
+    renderGaryTreeAndInspector(st, g);
     T5Charts.renderGaryMarkovSVG($("gary-markov-svg"), { ...st, horizon: g.horizon, gamma: g.gamma });
+  }
+
+  function renderGaryTreeAndInspector(st, g) {
+    const step = STATE.garyWalkthroughStep || "all";
+    const selIdx = STATE.garySelectedLeafIdx;
+    const Lgamma = 1 / Math.max(1e-6, 1 - g.gamma);
+    const Lstr = Math.abs(Lgamma - Math.round(Lgamma)) < 0.05 ? String(Math.round(Lgamma)) : Lgamma.toFixed(1);
+    const rMap = { CC: 3, CD: 0, DC: 5, DD: 1 };
+
+    // Update walkthrough step pills
+    document.querySelectorAll("#gary-walkthrough-bar .gw-pill").forEach((b) => {
+      b.classList.toggle("active", b.dataset.gw === step);
+    });
+
+    // Contextual plain-Spanish callout for the selected walkthrough step
+    const noteEl = $("gary-walkthrough-note");
+    if (noteEl) {
+      let msg = "";
+      if (st.is_opening) {
+        msg = `<strong>Turno 1 (Apertura Nice):</strong> todavía no hay historial ni árbol que expandir; Gary siempre abre cooperando ($C$) y a partir del Turno 2 construye sus probabilidades y las 16 hojas.`;
+      } else if (g.horizon !== 2 || !st.tree_h2) {
+        msg = `<strong>Horizonte H = ${g.horizon} (${Math.pow(4, g.horizon)} hojas):</strong> vuelve el control de horizonte a <strong>H = 2</strong> para inspeccionar las 16 hojas y los 4 pasos interactivos.`;
+      } else {
+        const tree = st.tree_h2;
+        const n0 = tree.level1[0];
+        const sNames = ["CC", "CD", "DC", "DD"];
+        const visitedDesc = sNames
+          .map((sn, i) => {
+            const [nc, nd] = st.counts[i];
+            return nc + nd > 0 ? `<code>${sn}</code>: ${nc}/${nc + nd} (${st.E[i].toFixed(2)})` : null;
+          })
+          .filter(Boolean)
+          .join(", ");
+        if (step === "probs") {
+          msg = `<strong>Paso 1 · Cómo construye las probabilidades $E_t$:</strong> Gary cuenta cuántas veces cooperó el rival después de cada estado. Hasta el turno ${st.turn} ha observado ${visitedDesc || "sin datos aún"}; los estados con <code>0/0</code> visitas quedan en <strong>0.00 (frontera prudente)</strong>. Esos números son las etiquetas <strong>Rival C / Rival D</strong> resaltadas en las ramas.`;
+        } else if (step === "down") {
+          msg = `<strong>Paso 2 · Cómo baja el árbol 2 turnos ($g = r_1 + \\gamma r_2$):</strong> Desde hoy (<code>${tree.root_state}</code>), bajamos probando jugar $A_1 \\in \\{C, D\\}$ (ganamos $r_1 \\in \\{3,0,5,1\\}$ en el Turno +1) y luego $A_2 \\in \\{C, D\\}$ (sumamos $\\gamma \\cdot r_2$ en el Turno +2). Por ejemplo, en <code>CC → CC</code> baja sumando $g = 3 + ${g.gamma.toFixed(2)}\\times 3 = ${(3 + g.gamma * 3).toFixed(1)}$ pts.`;
+        } else if (step === "leaves") {
+          const exLeaf = n0.leaves[0];
+          const exTot = exLeaf.g + exLeaf.h;
+          msg = `<strong>Paso 3 · ¿Por qué $g + h$ se convierte en pts/ronda ($\\bar{f}$)?</strong> En cada hoja pegamos la cola futura $+h = \\gamma^2 V_{\\mathrm{Markov}}$: por ejemplo en <code>CC → CC</code>, $g=${exLeaf.g.toFixed(1)}$ + $h=${exLeaf.h.toFixed(1)}$ = <strong>${exTot.toFixed(1)} pts descontados totales</strong>. Como ganar $1$ pt/ronda para siempre con $\\gamma=${g.gamma.toFixed(2)}$ suma $\\frac{1}{1-${g.gamma.toFixed(2)}} = ${Lstr}$ pts, <strong>dividimos por ${Lstr}</strong> (equiv. $\\times ${(1 - g.gamma).toFixed(2)}$): $${exTot.toFixed(1)} \\div ${Lstr} = \\mathbf{${exLeaf.f.toFixed(2)}}$ <strong>pts/ronda</strong>.`;
+        } else if (step === "up") {
+          msg = `<strong>Paso 4 · Cómo sube de vuelta hasta la raíz:</strong> Desde las 16 hojas subimos dos veces: cada óvalo <strong>AZAR</strong> promedia sus 2 hojas ponderando por $p$ y $1-p$, y cada caja <strong>MAX</strong> elige la acción más alta ($A_2 = C$ o $D$). Arriba en la raíz comparamos $\\bar{f}(C) = ${st.f_c.toFixed(3)}$ vs. $\\bar{f}(D) = ${st.f_d.toFixed(3)}$ $\\Rightarrow$ <strong>Gary elige ${st.chosen === "C" ? "COOPERAR (C)" : "TRAICIONAR (D)"}</strong>.`;
+        } else {
+          msg = `<strong>Cómo leer este árbol:</strong> (1) las cajitas blancas en las ramas son las probabilidades aprendidas $E_t$; (2) bajando 2 turnos se suma $g = r_1 + \\gamma r_2$; (3) en cada hoja se suma la cola Markov $+h$ y se divide por <strong>${Lstr}</strong> para volver a <strong>pts/ronda</strong>; (4) subiendo se promedia en AZAR y se elige el mayor en MAX. Pulsa los botones de paso arriba o haz clic en cualquier hoja.`;
+        }
+      }
+      noteEl.innerHTML = DOMPurify.sanitize(msg);
+      renderMath(noteEl);
+    }
+
+    T5Charts.renderGaryFullTreeH2SVG($("gary-full-tree-svg"), { ...st, horizon: g.horizon }, g.gamma, {
+      focusStep: step,
+      selectedLeafIdx: selIdx,
+      onSelectLeaf: (idx) => {
+        STATE.garySelectedLeafIdx = idx;
+        renderGaryTreeAndInspector(st, g);
+      },
+    });
+    renderMath($("gary-full-tree-svg"));
+
+    // Live arithmetic breakdown box for the clicked/selected leaf
+    const inspEl = $("gary-leaf-inspector");
+    if (inspEl) {
+      if (st.is_opening || g.horizon !== 2 || !st.tree_h2) {
+        inspEl.classList.add("hidden");
+      } else {
+        inspEl.classList.remove("hidden");
+        const lIdx = selIdx != null ? selIdx : 0;
+        const i = Math.floor(lIdx / 4);
+        const j = lIdx % 4;
+        const n1 = st.tree_h2.level1[i];
+        const lf = n1.leaves[j];
+        const a1 = i < 2 ? "C" : "D";
+        const o1 = i % 2 === 0 ? "C" : "D";
+        const a2 = j < 2 ? "C" : "D";
+        const o2 = j % 2 === 0 ? "C" : "D";
+        const r1 = n1.r1;
+        const r2 = rMap[lf.s2];
+        const sIdx2 = ["CC", "CD", "DC", "DD"].indexOf(lf.s2);
+        const vMark2 = st.v_markov[sIdx2];
+        const gamma2 = g.gamma * g.gamma;
+        const tot = lf.g + lf.h;
+        inspEl.innerHTML = DOMPurify.sanitize(`
+          <div class="gli-title">
+            <span>Cuenta exacta de la hoja #${lIdx + 1}: <code>${n1.s1} → ${lf.s2}</code> (Yo ${a1}, Rival ${o1} → luego Yo ${a2}, Rival ${o2})</span>
+            <span class="mono" style="color:#166534">Resultado final: ${lf.f.toFixed(3)} pts/ronda</span>
+          </div>
+          <div class="gli-steps">
+            <div class="gli-step">
+              <strong>1. Bajar 2 turnos (g)</strong>
+              <span class="mono">r₁ + γ·r₂ = ${r1} + ${g.gamma.toFixed(2)}×${r2} = <b>${lf.g.toFixed(2)}</b> pts</span>
+            </div>
+            <div class="gli-step">
+              <strong>2. Cola Markov (+h)</strong>
+              <span class="mono">γ²·V(${lf.s2}) = ${gamma2.toFixed(2)}×${vMark2.toFixed(1)} = <b>+${lf.h.toFixed(2)}</b> pts</span>
+            </div>
+            <div class="gli-step">
+              <strong>3. Suma total (g + h)</strong>
+              <span class="mono">${lf.g.toFixed(2)} + ${lf.h.toFixed(2)} = <b>${tot.toFixed(2)}</b> pts totales</span>
+            </div>
+            <div class="gli-step">
+              <strong>4. Pasar a pts/ronda (÷${Lstr})</strong>
+              <span class="mono">${tot.toFixed(2)} ÷ ${Lstr} = <b>${lf.f.toFixed(3)}</b> pts/r</span>
+            </div>
+          </div>`);
+      }
+    }
   }
 
   function renderGarySection() {
     const g = STATE.gary;
     if (!g) return;
+    const avatarBox = $("gary-hero-avatar");
+    if (avatarBox && window.T5Voxel) {
+      avatarBox.innerHTML = DOMPurify.sanitize(window.T5Voxel.renderVoxelAvatar("gen3_gary", { headOnly: true, size: 78 }));
+    }
     const steps = g.e_vector_vs_rival.steps || [];
 
     const ribbon = $("gary-ribbon");
-    ribbon.innerHTML = steps.map((st, i) => `<div class="ribbon-cell st-${st.outcome_state}" data-gturn="${i + 1}" title="T${i + 1}: (${st.my_move}, ${st.opp_move}) → +${st.round_score}"></div>`).join("");
+    ribbon.innerHTML = DOMPurify.sanitize(steps.map((st, i) => `<div class="ribbon-cell st-${st.outcome_state}" data-gturn="${i + 1}" title="T${i + 1}: (${st.my_move}, ${st.opp_move}) → +${st.round_score}"></div>`).join(""));
     ribbon.querySelectorAll(".ribbon-cell").forEach((c) => c.addEventListener("click", () => { stopGaryPlayback(); updateGaryStepView(parseInt(c.dataset.gturn, 10)); }));
 
     $("gary-turn-slider").max = g.turns;
     const initTurn = Math.min(g.turns, Math.max(1, steps.findIndex((s) => s.outcome_state === "CD") + 2 || 12));
     updateGaryStepView(initTurn);
-
-    T5Charts.renderLineChart($("cv-gary-horizon"), {
-      series: [
-        { label: `Peso Futuro w_fut(t) (L_γ=${g.effective_horizon})`, color: "#0f4c81", values: g.horizon_weights.w_fut, fillArea: "rgba(15, 76, 129, 0.12)" },
-        { label: "Inercia Histórica w_pas(t)", color: "#475569", dashed: true, values: g.horizon_weights.w_pas },
-      ],
-      yMin: 0, yMax: 102, yDecimals: 0, xLabel: "Turno (t)", yLabel: "Peso Relativo (%)",
-    });
-
-    T5Charts.renderLineChart($("cv-gary-root"), {
-      series: [
-        { label: `Expectimax H=${g.horizon}: f̄ₜ(C) = ${g.root_vs_tft.mean_f_c.toFixed(2)}`, color: "#2e7d32", values: g.root_vs_tft.f_c },
-        { label: `Expectimax H=${g.horizon}: f̄ₜ(D) ≈ ${g.root_vs_tft.mean_f_d.toFixed(2)}`, color: "#1565c0", dashed: true, values: g.root_vs_tft.f_d },
-        { label: "Rulito (γ=0): Q̂ₜ(D) → 1.00", color: "#c62828", dashed: true, values: g.root_vs_tft.rulito_qd.map((v, i) => (i < 10 ? 1.0 : Math.min(3.3, v))) },
-      ],
-      yMin: 0.5, yMax: 3.4, xLabel: "Turno (t)", yLabel: "Retorno Esperado (pts/r)",
-    });
-
-    $("gary-e-subtitle").textContent = `Frente a ${g.rival_name} (puntaje final: ${g.rival_final_avg.toFixed(3)} pts/r) · Clic para saltar al turno`;
-    T5Charts.renderLineChart($("cv-gary-evec"), {
-      series: [
-        { label: "p̂_CC", color: "#2e7d32", values: g.e_vector_vs_rival.e_cc },
-        { label: "p̂_CD", color: "#c62828", dashed: true, values: g.e_vector_vs_rival.e_cd },
-        { label: "p̂_DC", color: "#ef6c00", dashed: true, values: g.e_vector_vs_rival.e_dc },
-        { label: "p̂_DD", color: "#334155", values: g.e_vector_vs_rival.e_dd },
-      ],
-      yMin: -0.04, yMax: 1.08, xLabel: "Turno (t)", yLabel: "Probabilidad en Eₜ",
-      onPointClick: (turn) => { activateSubtab($("tab-gary"), "gary-step"); updateGaryStepView(turn); },
-    });
-
-    T5Charts.renderVerticalBarChart($("cv-gary-ablation"), {
-      categories: g.ablation.benchmarks, groups: g.ablation.series, yMin: 2.2, yMax: 3.05, yLabel: "Puntaje Medio (pts/r)", showBarValues: true,
-    });
   }
 
   // =========================================================================
@@ -1119,14 +1332,14 @@
 
   function updateDuelRlBarVisibility() {
     const aid = $("duel-agent-a").value;
-    $("duel-rl-params-bar").classList.toggle("hidden", aid !== "gen5_rl" && aid !== "gen6_jacinto");
+    $("duel-rl-params-bar").classList.toggle("hidden", aid !== "gen5_rl");
   }
 
   async function runCurrentDuel() {
     stopDuelPlayback();
     const aid = $("duel-agent-a").value || "gen5_rl";
     const bid = $("duel-agent-b").value || "axl_Defector";
-    const paramsA = (aid === "gen5_rl" || aid === "gen6_jacinto")
+    const paramsA = aid === "gen5_rl"
       ? { initial_count: parseFloat($("duel-n0").value), forgetting_factor: parseFloat($("duel-lam").value), gamma: parseFloat($("duel-gamma").value) }
       : {};
     try {
@@ -1137,7 +1350,7 @@
         rolling_window: parseInt($("duel-window").value, 10) || 15,
         seed: parseInt($("duel-seed").value, 10) || 42,
       });
-      STATE.duelActiveTurn = Math.min(STATE.duel.turns, 7);
+      STATE.duelActiveTurn = Math.min(STATE.duel.turns, 8);
       renderDuelView();
     } catch (err) { toast(`Error en duelo: ${err.message}`, "error"); }
     finally { $("btn-run-duel").disabled = false; }
@@ -1148,14 +1361,14 @@
     if (!d) return;
     const pa = d.player_a, pb = d.player_b, sc = d.state_counts;
 
-    $("duel-kpi-grid").innerHTML = `
+    $("duel-kpi-grid").innerHTML = DOMPurify.sanitize(`
       <div class="kpi-card green"><div class="kpi-label">Jugador A · ${pa.name.slice(0, 22)}</div><div class="kpi-value">${pa.mean_score.toFixed(3)} pts/r</div><div class="kpi-sub">Total: ${pa.total_score} · Últ. 100: ${pa.last100_score.toFixed(3)} · Coop: ${pa.coop_rate}%</div></div>
       <div class="kpi-card blue"><div class="kpi-label">Jugador B · ${pb.name.slice(0, 22)}</div><div class="kpi-value">${pb.mean_score.toFixed(3)} pts/r</div><div class="kpi-sub">Total: ${pb.total_score} · Últ. 100: ${pb.last100_score.toFixed(3)} · Coop: ${pb.coop_rate}%</div></div>
       <div class="kpi-card ${pa.n_sucker === 0 ? "green" : pa.n_sucker <= 15 ? "amber" : "red"}"><div class="kpi-label">Estafas (S=0) y Estabilización</div><div class="kpi-value">${pa.n_sucker} / ${pa.t_est == null ? "—" : "t=" + pa.t_est}</div><div class="kpi-sub">Rondas en CD · Turno defensa estable</div></div>
-      <div class="kpi-card purple"><div class="kpi-label">Distribución de Estados</div><div class="kpi-value" style="font-size:15px;margin-top:6px">CC:${sc.CC} · CD:${sc.CD} · DC:${sc.DC} · DD:${sc.DD}</div><div class="kpi-sub">${d.turns} rondas (Seed ${d.seed})</div></div>`;
+      <div class="kpi-card purple"><div class="kpi-label">Distribución de Estados</div><div class="kpi-value" style="font-size:15px;margin-top:6px">CC:${sc.CC} · CD:${sc.CD} · DC:${sc.DC} · DD:${sc.DD}</div><div class="kpi-sub">${d.turns} rondas (Seed ${d.seed})</div></div>`);
 
     const ribbon = $("duel-ribbon");
-    ribbon.innerHTML = d.states.map((st, i) => `<div class="ribbon-cell st-${st}" data-turn="${i + 1}" title="T${i + 1}: (${pa.moves[i]}, ${pb.moves[i]}) → +${pa.round_scores[i]}/+${pb.round_scores[i]}"></div>`).join("");
+    ribbon.innerHTML = DOMPurify.sanitize(d.states.map((st, i) => `<div class="ribbon-cell st-${st}" data-turn="${i + 1}" title="T${i + 1}: (${pa.moves[i]}, ${pb.moves[i]}) → +${pa.round_scores[i]}/+${pb.round_scores[i]}"></div>`).join(""));
     ribbon.querySelectorAll(".ribbon-cell").forEach((cell) => {
       cell.addEventListener("click", () => { stopDuelPlayback(); setDuelActiveTurn(parseInt(cell.dataset.turn, 10)); });
     });
@@ -1184,23 +1397,23 @@
       const qc = snap.q_c ? snap.q_c[si] : 0, qd = snap.q_d ? snap.q_d[si] : 0, dq = snap.delta_q[si];
       const decHtml = turn1Based === 1
         ? `Apertura Nice → juega <strong>C</strong> (Política: <span class="mono">${snap.policy_str}</span>)`
-        : `En estado <strong>${currS}</strong>: $Q_t(${currS}, C) = ${qc.toFixed(2)}$ vs. $Q_t(${currS}, D) = ${qd.toFixed(2)}$ ($\\Delta Q_t = ${dq >= 0 ? "+" : ""}${dq.toFixed(2)}$) $\\implies$ elige <strong>${pa.moves[idx]}</strong> (Política: <span class="mono">${snap.policy_str}</span>)`;
-      box.innerHTML = `<div class="theorem-box" style="margin-bottom:0">${updateHtml}<p style="margin:6px 0 0;font-size:13.5px">${decHtml}</p></div>`;
+        : `En estado <strong>${currS}</strong>: $Q_t(${currS}, C) = ${qc.toFixed(2)}$ vs. $Q_t(${currS}, D) = ${qd.toFixed(2)}$ ($\\Delta Q_t = ${dq >= 0 ? "+" : ""}${dq.toFixed(2)}$) $\\implies$ elige <strong>${pa.moves[idx]}</strong> (Política: <span class="mono">${snap.policy_str}</span>${snap.iterations ? ` · ${snap.iterations} iters` : ""})`;
+      box.innerHTML = DOMPurify.sanitize(`<div class="theorem-box" style="margin-bottom:0">${updateHtml}<p style="margin:6px 0 0;font-size:13.5px">${decHtml}</p></div>`);
       renderMath(box);
     } else if (tr && tr.kind === "gary" && tr.turns[idx]) {
       const s = tr.turns[idx];
       const eq = s.is_opening
         ? `Turno 1 (apertura cooperativa fija): elige <strong>C</strong>.`
         : `Estado <strong>${s.current_state}</strong> ($p=${s.p_c.toFixed(2)}$): $\\bar{f}_t(C) = ${s.p_c.toFixed(2)}\\cdot${s.val_cc.toFixed(2)} + ${s.p_d.toFixed(2)}\\cdot${s.val_cd.toFixed(2)} = \\mathbf{${s.f_c.toFixed(3)}}$ vs. $\\bar{f}_t(D) = ${s.p_c.toFixed(2)}\\cdot${s.val_dc.toFixed(2)} + ${s.p_d.toFixed(2)}\\cdot${s.val_dd.toFixed(2)} = \\mathbf{${s.f_d.toFixed(3)}}$ $\\implies$ elige <strong>${s.chosen}</strong>.`;
-      box.innerHTML = `<div class="theorem-box" style="margin-bottom:0"><p style="margin:0;font-size:13.5px">${eq}</p></div>`;
+      box.innerHTML = DOMPurify.sanitize(`<div class="theorem-box" style="margin-bottom:0"><p style="margin:0;font-size:13.5px">${eq}</p></div>`);
       renderMath(box);
     } else if (tr && (tr.kind === "rulito" || tr.kind === "cloud") && tr.turns[idx]) {
       const s = tr.turns[idx];
-      box.innerHTML = `<div class="theorem-box" style="margin-bottom:0"><p style="margin:0;font-size:13.5px">Fase: <strong>${s.phase}</strong> · $\\hat{Q}(s, C) = ${s.q_c.toFixed(2)}$ vs. $\\hat{Q}(s, D) = ${s.q_d.toFixed(2)}$ $\\implies$ juega <strong>${pa.moves[idx]}</strong>.</p></div>`;
+      box.innerHTML = DOMPurify.sanitize(`<div class="theorem-box" style="margin-bottom:0"><p style="margin:0;font-size:13.5px">Fase: <strong>${s.phase}</strong> · $\\hat{Q}(s, C) = ${s.q_c.toFixed(2)}$ vs. $\\hat{Q}(s, D) = ${s.q_d.toFixed(2)}$ $\\implies$ juega <strong>${pa.moves[idx]}</strong>.</p></div>`);
       renderMath(box);
     } else {
       const prevS = idx > 0 ? d.states[idx - 1] : "Inicio";
-      box.innerHTML = `<div class="theorem-box" style="margin-bottom:0"><p style="margin:0;font-size:13.5px">Estado previo: <strong>${prevS}</strong> → <strong>${pa.name}</strong> juega <strong>${pa.moves[idx]}</strong>, <strong>${pb.name}</strong> juega <strong>${pb.moves[idx]}</strong> (+${pa.round_scores[idx]} / +${pb.round_scores[idx]} pts).</p></div>`;
+      box.innerHTML = DOMPurify.sanitize(`<div class="theorem-box" style="margin-bottom:0"><p style="margin:0;font-size:13.5px">Estado previo: <strong>${prevS}</strong> → <strong>${asText(pa.name)}</strong> juega <strong>${pa.moves[idx]}</strong>, <strong>${asText(pb.name)}</strong> juega <strong>${pb.moves[idx]}</strong> (+${pa.round_scores[idx]} / +${pb.round_scores[idx]} pts).</p></div>`);
     }
   }
 
@@ -1234,7 +1447,7 @@
     const activeCell = document.querySelector(`#duel-ribbon .ribbon-cell[data-turn="${t}"]`);
     if (activeCell) activeCell.classList.add("active-turn");
 
-    $("duel-window-strip").innerHTML = buildTurnWindowHTML(pa.moves, pb.moves, pa.round_scores, pb.round_scores, t);
+    $("duel-window-strip").innerHTML = DOMPurify.sanitize(buildTurnWindowHTML(pa.moves, pb.moves, pa.round_scores, pb.round_scores, t));
     renderDuelLiveDecisionBox(t);
 
     T5Charts.renderLineChart($("cv-duel-scores"), {
@@ -1356,7 +1569,7 @@
       rows.push(`<tr style="cursor:pointer" data-row-turn="${i + 1}"><td class="mono">${i + 1}</td><td class="text-center"><span class="badge ${pa.moves[i] === "C" ? "badge-c" : "badge-d"}">${pa.moves[i]}</span> <span class="badge ${pb.moves[i] === "C" ? "badge-c" : "badge-d"}">${pb.moves[i]}</span></td><td class="mono text-right">+${pa.round_scores[i]} / +${pb.round_scores[i]}</td><td class="mono text-right">${pa.cum_avg[i].toFixed(3)}</td><td class="mono text-right">${pb.cum_avg[i].toFixed(3)}</td><td class="text-center">${polStr}</td><td class="mono" style="font-size:11.8px">${detail}</td></tr>`);
     }
     const tb = $("tbody-duel-trace");
-    tb.innerHTML = rows.join("");
+    setSanitizedTableBody(tb, rows.join(""));
     tb.querySelectorAll("tr[data-row-turn]").forEach((r) => r.addEventListener("click", () => { stopDuelPlayback(); setDuelActiveTurn(parseInt(r.dataset.rowTurn, 10)); }));
   }
 
@@ -1397,14 +1610,14 @@
   }
 
   // =========================================================================
-  // 10-SEED AXELROD, HARPER 41, MEGA 175 & LIVE TOURNAMENTS
+  // 10-SEED AXELROD, HARPER 37, MEGA 171 & LIVE TOURNAMENTS
   // =========================================================================
   const AGENT_COLORS_MAP = {
-    "1. Rulito (Miope g=0)": "#d62728",
-    "2. Cloud (1-Step g=0.90)": "#ef6c00",
-    "3. Expectimax H=4 + Markov": "#7b3fa0",
+    "1. Cloud (Miope g=0)": "#d62728",
+    "2. Rulito (1-Step g=0.90)": "#ef6c00",
+    "3. Expectimax H=2 + Markov": "#7b3fa0",
     "4. Base MDP Fija (CDDC)": "#1565c0",
-    "5. RL Olvido (n0=2.0, lam=0.90)": "#2e7d32",
+    "5. Mitcha (RL Olvido)": "#2e7d32",
   };
   const AGENT_NAMES_ORDERED = Object.keys(AGENT_COLORS_MAP);
 
@@ -1438,11 +1651,11 @@
     renderAxelrod10Focus(parseInt($("t10-gen-select").value, 10) || 4);
 
     const boxGroups = AGENT_NAMES_ORDERED.map((nm) => ({
-      label: nm.split(" (")[0].replace("Expectimax H=4 + Markov", "3. Expect.\n+Markov").replace("Base MDP Fija", "4. Base\nCDDC").replace("RL Olvido", "5. RL\nOlvido").replace("Rulito", "1. Rulito").replace("Cloud", "2. Cloud"),
+      label: nm.split(" (")[0].replace("Expectimax H=2 + Markov", "3. Expect.\n+Markov").replace("Base MDP Fija", "4. Base\nCDDC").replace("Mitcha", "5. Mitcha\n(RL)").replace("Cloud", "1. Cloud").replace("Rulito", "2. Rulito"),
       color: AGENT_COLORS_MAP[nm],
       values: data.individual_axelrod_10seeds[nm].find((r) => r.name === nm).seed_scores,
     }));
-    const tftRef = data.individual_axelrod_10seeds["5. RL Olvido (n0=2.0, lam=0.90)"].find((r) => r.name === "Tit For Tat");
+    const tftRef = data.individual_axelrod_10seeds["5. Mitcha (RL Olvido)"].find((r) => r.name === "Tit For Tat");
     if (tftRef) boxGroups.push({ label: "Tit For\nTat", color: "#eab308", values: tftRef.seed_scores });
 
     T5Charts.renderBoxplotChart($("cv-t10-box"), { groups: boxGroups, yMin: 1.80, yMax: 2.90 });
@@ -1467,22 +1680,25 @@
     T5Charts.renderBoxplotChart($("cv-t10-box-grid"), { groups: boxGroups, yMin: 1.80, yMax: 2.90 });
 
     const ourSet = new Set(AGENT_NAMES_ORDERED);
+    const harperN = data.harper_n_players || 37;
     const harperSel = data.harper_10seeds.filter((r) => r.overall_rank <= 20 || ourSet.has(r.name));
     T5Charts.renderHorizontalBarChart($("cv-harper-41"), {
-      xMin: 1.5, xMax: 3.12, padLeft: 184, showAllValues: true, xLabel: "Puntaje Medio ± DE (10 Semillas)",
+      xMin: 1.5, xMax: 3.12, padLeft: 184, showAllValues: true, xLabel: `Puntaje Medio ± DE (10 Semillas · /${harperN})`,
       items: harperSel.map((r) => {
         const isOur = ourSet.has(r.name), isTrained = /Evolved|PSO|Winner|DBS|Fool/.test(r.name);
-        return { label: `#${String(r.overall_rank).padStart(2, " ")}/41 ${r.name}`, fullLabel: `#${r.overall_rank}/41 ${r.name}`, value: r.mean_score, std: r.std_score, color: isOur ? AGENT_COLORS_MAP[r.name] : isTrained ? "#6A1B9A" : r.name.includes("Tit For Tat") ? "#eab308" : "#7f8c8d", bold: isOur, extra: `Rank medio: ${r.mean_rank.toFixed(2)}` };
+        return { label: `#${String(r.overall_rank).padStart(2, " ")}/${harperN} ${r.name}`, fullLabel: `#${r.overall_rank}/${harperN} ${r.name}`, value: r.mean_score, std: r.std_score, color: isOur ? AGENT_COLORS_MAP[r.name] : isTrained ? "#6A1B9A" : r.name.includes("Tit For Tat") ? "#eab308" : "#7f8c8d", bold: isOur, extra: `Rank medio: ${r.mean_rank.toFixed(2)}` };
       }),
     });
 
     const classics = new Set(["First by Shubik", "Forgiving Tit For Tat", "Grudger"]);
-    const megaSel = data.mega_tournament_175.filter((r) => r.overall_rank <= 18 || ourSet.has(r.name) || classics.has(r.name));
+    const megaRows = data.mega_tournament_171 || data.mega_tournament_175 || [];
+    const megaN = data.mega_n_players || 171;
+    const megaSel = megaRows.filter((r) => r.overall_rank <= 18 || ourSet.has(r.name) || classics.has(r.name));
     T5Charts.renderHorizontalBarChart($("cv-mega-175"), {
-      xMin: 1.5, xMax: 3.18, padLeft: 184, showAllValues: true, xLabel: "Puntaje Medio (175 Estrategias)",
+      xMin: 1.5, xMax: 3.18, padLeft: 184, showAllValues: true, xLabel: `Puntaje Medio (${megaN} jug. · eval. individual)`,
       items: megaSel.map((r) => {
         const isOur = ourSet.has(r.name), isTrained = /Evolved|PSO|Winner|DBS|Fool/.test(r.name);
-        return { label: `#${String(r.overall_rank).padStart(3, " ")}/175 ${r.name}`, fullLabel: `#${r.overall_rank}/175 ${r.name}`, value: r.mean_score, color: isOur ? AGENT_COLORS_MAP[r.name] : isTrained ? "#6A1B9A" : classics.has(r.name) ? "#eab308" : "#7f8c8d", bold: isOur, valueLabel: `${r.mean_score.toFixed(3)} (#${r.overall_rank})` };
+        return { label: `#${String(r.overall_rank).padStart(3, " ")}/${megaN} ${r.name}`, fullLabel: `#${r.overall_rank}/${megaN} ${r.name}`, value: r.mean_score, color: isOur ? AGENT_COLORS_MAP[r.name] : isTrained ? "#6A1B9A" : classics.has(r.name) ? "#eab308" : "#7f8c8d", bold: isOur, valueLabel: `${r.mean_score.toFixed(3)} (#${r.overall_rank})` };
       }),
     });
 
@@ -1494,16 +1710,17 @@
     if (!data) return;
     const ourSet = new Set(AGENT_NAMES_ORDERED);
     const fh = qHarper.trim().toLowerCase();
-    $("tbody-harper").innerHTML = data.harper_10seeds.filter((r) => !fh || r.name.toLowerCase().includes(fh)).map((r) => {
-      const cls = r.name.includes("RL Olvido") ? "highlight-row" : r.name.includes("Expectimax") ? "highlight-gary" : "";
+    setSanitizedTableBody($("tbody-harper"), data.harper_10seeds.filter((r) => !fh || r.name.toLowerCase().includes(fh)).map((r) => {
+      const cls = r.name.includes("Mitcha") || r.name.includes("RL Olvido") ? "highlight-row" : r.name.includes("Expectimax") ? "highlight-gary" : "";
       return `<tr class="${cls}"><td class="mono">#${r.overall_rank}</td><td>${ourSet.has(r.name) ? `<strong>${r.name}</strong>` : r.name}</td><td class="mono text-right">${r.mean_score.toFixed(3)} ± ${r.std_score.toFixed(3)}</td><td class="mono text-right">${r.mean_rank.toFixed(2)}</td></tr>`;
-    }).join("");
+    }).join(""));
 
+    const megaRows = data.mega_tournament_171 || data.mega_tournament_175 || [];
     const fm = qMega.trim().toLowerCase();
-    $("tbody-mega").innerHTML = data.mega_tournament_175.filter((r) => !fm || r.name.toLowerCase().includes(fm)).map((r) => {
-      const cls = r.name.includes("RL Olvido") ? "highlight-row" : r.name.includes("Expectimax") ? "highlight-gary" : "";
+    setSanitizedTableBody($("tbody-mega"), megaRows.filter((r) => !fm || r.name.toLowerCase().includes(fm)).map((r) => {
+      const cls = r.name.includes("Mitcha") || r.name.includes("RL Olvido") ? "highlight-row" : r.name.includes("Expectimax") ? "highlight-gary" : "";
       return `<tr class="${cls}"><td class="mono">#${r.overall_rank}</td><td>${ourSet.has(r.name) ? `<strong>${r.name}</strong>` : r.name}</td><td class="mono text-right">${r.mean_score.toFixed(3)}</td></tr>`;
-    }).join("");
+    }).join(""));
   }
 
   async function startLiveTournament() {
@@ -1578,21 +1795,21 @@
   function renderBuilderDiagnostics(diag) {
     const box = $("builder-test-output");
     box.classList.remove("hidden");
-    box.innerHTML = `<div class="theorem-box" style="margin-bottom:0"><h4>✓ "${diag.name}" validada (${diag.stochastic ? "Estocástica" : "Determinista"})</h4><div class="table-wrap mt-sm"><table class="data-table"><thead><tr><th>Rival (100 t.)</th><th class="text-right">Mi Media</th><th class="text-right">Rival</th><th class="text-right">% Coop</th><th>Primeros 10</th></tr></thead><tbody>${diag.diagnostics.map((r) => `<tr><td><strong>${r.rival}</strong></td><td class="mono text-right"><strong>${r.my_avg.toFixed(3)}</strong></td><td class="mono text-right">${r.opp_avg.toFixed(3)}</td><td class="mono text-right">${r.coop_pct}%</td><td class="mono">${r.first_10}</td></tr>`).join("")}</tbody></table></div></div>`;
+    box.innerHTML = DOMPurify.sanitize(`<div class="theorem-box" style="margin-bottom:0"><h4>✓ "${asText(diag.name)}" validada (${diag.stochastic ? "Estocástica" : "Determinista"})</h4><div class="table-wrap mt-sm"><table class="data-table"><thead><tr><th>Rival (100 t.)</th><th class="text-right">Mi Media</th><th class="text-right">Rival</th><th class="text-right">% Coop</th><th>Primeros 10</th></tr></thead><tbody>${diag.diagnostics.map((r) => `<tr><td><strong>${r.rival}</strong></td><td class="mono text-right"><strong>${r.my_avg.toFixed(3)}</strong></td><td class="mono text-right">${r.opp_avg.toFixed(3)}</td><td class="mono text-right">${r.coop_pct}%</td><td class="mono">${r.first_10}</td></tr>`).join("")}</tbody></table></div></div>`);
   }
 
   function renderCustomStrategiesList() {
     const list = $("custom-strategies-list");
     const customs = STATE.catalog.filter((c) => c.id.startsWith("custom_"));
-    if (!customs.length) { list.innerHTML = `<p class="muted">Aún no has guardado estrategias propias.</p>`; return; }
-    list.innerHTML = customs.map((c) => {
+    if (!customs.length) { list.innerHTML = DOMPurify.sanitize(`<p class="muted">Aún no has guardado estrategias propias.</p>`); return; }
+    list.innerHTML = DOMPurify.sanitize(customs.map((c) => {
       const meta = c.custom_meta || {};
       return `<div class="custom-item">
         <div style="display:flex;align-items:center;gap:10px">
           ${T5Voxel.renderVoxelAvatar(c.id, { headOnly: true, size: 34, color: c.color })}
           <div>
-            <div style="display:flex;align-items:center;gap:6px"><strong>${c.name}</strong><span class="badge badge-gray">${meta.kind || "custom"}</span></div>
-            <div class="muted" style="margin-top:2px">${c.description || "Sin descripción"}</div>
+            <div style="display:flex;align-items:center;gap:6px"><strong>${asText(c.name)}</strong><span class="badge badge-gray">${meta.kind || "custom"}</span></div>
+            <div class="muted" style="margin-top:2px">${asText(c.description || "Sin descripción")}</div>
           </div>
         </div>
         <div class="btn-group">
@@ -1602,7 +1819,7 @@
           <button class="btn btn-danger btn-sm" data-cdel="${meta.id}">✕</button>
         </div>
       </div>`;
-    }).join("");
+    }).join(""));
 
     list.querySelectorAll("[data-cplay]").forEach((b) => b.addEventListener("click", () => { switchTab("play"); startHumanGame(b.dataset.cplay); }));
     list.querySelectorAll("[data-cduel]").forEach((b) => b.addEventListener("click", () => openDuelDirectly(b.dataset.cduel, "gen5_rl")));
@@ -1628,7 +1845,7 @@
       const res = await apiGet("/api/code");
       STATE.codeFiles = res.files || [];
       const box = $("code-file-tabs");
-      box.innerHTML = STATE.codeFiles.map((f, idx) => `<button class="subtab-btn ${idx === STATE.activeCodeIdx ? "active" : ""}" data-code-idx="${idx}">${f.filename}</button>`).join("");
+      box.innerHTML = DOMPurify.sanitize(STATE.codeFiles.map((f, idx) => `<button class="subtab-btn ${idx === STATE.activeCodeIdx ? "active" : ""}" data-code-idx="${idx}">${f.filename}</button>`).join(""));
       box.querySelectorAll("[data-code-idx]").forEach((b) => b.addEventListener("click", () => showCodeFile(parseInt(b.dataset.codeIdx, 10))));
       showCodeFile(0);
     } catch (err) { toast(err.message, "error"); }
@@ -1644,7 +1861,7 @@
     $("btn-run-script").disabled = !f.runnable || Boolean(STATE.scriptPollTimer);
     $("btn-run-script").textContent = f.runnable ? `▶ Ejecutar (${f.est})` : "Solo descarga (.ipynb)";
     $("btn-download-code").textContent = f.filename.endsWith(".ipynb") ? "Descargar .ipynb" : "Descargar .py";
-    $("code-viewer-pre").innerHTML = highlightPython(f.content);
+    $("code-viewer-pre").innerHTML = DOMPurify.sanitize(highlightPython(f.content));
   }
 
   function stopScriptPolling() {
@@ -1652,6 +1869,8 @@
       clearInterval(STATE.scriptPollTimer);
       STATE.scriptPollTimer = null;
     }
+    STATE.activeScriptJobId = null;
+    $("btn-stop-script").disabled = false;
     $("btn-stop-script").classList.add("hidden");
     const f = STATE.codeFiles && STATE.codeFiles[STATE.activeCodeIdx];
     $("btn-run-script").disabled = !(f && f.runnable);
@@ -1664,7 +1883,6 @@
 
     try {
       $("btn-run-script").disabled = true;
-      $("btn-stop-script").classList.remove("hidden");
       $("script-console-wrap").classList.remove("hidden");
       $("script-images-box").classList.add("hidden");
       $("script-images-box").innerHTML = "";
@@ -1675,6 +1893,7 @@
 
       const started = await apiPost("/api/scripts/run", { script_id: f.id });
       STATE.activeScriptJobId = started.job_id;
+      $("btn-stop-script").classList.remove("hidden");
 
       STATE.scriptPollTimer = setInterval(async () => {
         try {
@@ -1690,9 +1909,9 @@
               $("script-status-badge").className = "badge badge-c";
               $("script-status-badge").textContent = "✓ Completado (Exit 0)";
               toast(`${f.filename} ejecutado en ${st.elapsed_sec}s`, "success");
-            } else if (st.status === "stopped") {
+            } else if (st.status === "stopped" || st.status === "timed_out") {
               $("script-status-badge").className = "badge badge-amber";
-              $("script-status-badge").textContent = "■ Detenido";
+              $("script-status-badge").textContent = st.status === "stopped" ? "■ Detenido" : "■ Tiempo agotado";
             } else {
               $("script-status-badge").className = "badge badge-d";
               $("script-status-badge").textContent = `✕ Error (Exit ${st.returncode ?? "?"})`;
@@ -1702,15 +1921,15 @@
             if (st.generated_images && st.generated_images.length) {
               const imgBox = $("script-images-box");
               imgBox.classList.remove("hidden");
-              imgBox.innerHTML = st.generated_images
+              imgBox.innerHTML = DOMPurify.sanitize(st.generated_images
                 .map(
                   (im) => `
                 <div class="card" style="padding:10px;margin-bottom:0">
                   <div class="mono muted mb-sm">Figura generada: <strong>${im.name}</strong></div>
-                  <a href="${im.url}" target="_blank"><img src="${im.url}" alt="${im.name}" style="width:100%;border-radius:6px;border:1px solid var(--border)"/></a>
+                  <a href="${appUrl(im.url)}" target="_blank"><img src="${appUrl(im.url)}" alt="${im.name}" style="width:100%;border-radius:6px;border:1px solid var(--border)"/></a>
                 </div>`
                 )
-                .join("");
+                .join(""));
             }
           }
         } catch (err) {
@@ -1720,6 +1939,9 @@
       }, 300);
     } catch (err) {
       stopScriptPolling();
+      $("script-status-badge").className = "badge badge-amber";
+      $("script-status-badge").textContent = "En espera";
+      $("script-console-pre").textContent = err.message;
       toast(err.message, "error");
     }
   }
@@ -1727,12 +1949,15 @@
   async function runUnitTests() {
     try {
       $("btn-run-unittests").disabled = true;
-      $("unittest-results-box").innerHTML = `<p class="muted">Ejecutando pruebas unitarias...</p>`;
+      $("unittest-results-box").innerHTML = DOMPurify.sanitize(`<p class="muted">Ejecutando pruebas unitarias...</p>`);
       const res = await apiPost("/api/tests/run", {});
       const pill = res.passed ? `<span class="badge badge-c">✓ ${res.tests_run}/${res.tests_run} pruebas superadas en ${res.elapsed_sec}s</span>` : `<span class="badge badge-d">✕ ${res.failures + res.errors} fallos</span>`;
-      $("unittest-results-box").innerHTML = `<div class="mb-sm">${pill}</div><div class="table-wrap mb-sm"><table class="data-table"><thead><tr><th>Prueba Unitaria</th><th class="text-center">Resultado</th></tr></thead><tbody>${res.tests.map((t) => `<tr><td class="mono">${t.name}</td><td class="text-center"><span class="badge ${t.status === "ok" ? "badge-c" : "badge-d"}">${t.status.toUpperCase()}</span></td></tr>`).join("")}</tbody></table></div><details><summary class="muted" style="cursor:pointer">Salida completa</summary><pre class="code-viewer-pre mt-sm" style="max-height:220px">${res.raw_output}</pre></details>`;
+      $("unittest-results-box").innerHTML = DOMPurify.sanitize(`<div class="mb-sm">${pill}</div><div class="table-wrap mb-sm"><table class="data-table"><thead><tr><th>Prueba Unitaria</th><th class="text-center">Resultado</th></tr></thead><tbody>${res.tests.map((t) => `<tr><td class="mono">${t.name}</td><td class="text-center"><span class="badge ${t.status === "ok" ? "badge-c" : "badge-d"}">${t.status.toUpperCase()}</span></td></tr>`).join("")}</tbody></table></div><details><summary class="muted" style="cursor:pointer">Salida completa</summary><pre class="code-viewer-pre mt-sm" style="max-height:220px">${res.raw_output}</pre></details>`);
       toast(`Pruebas completadas: ${res.tests_run} OK`, res.passed ? "success" : "error");
-    } catch (err) { toast(err.message, "error"); }
+    } catch (err) {
+      $("unittest-results-box").textContent = err.message;
+      toast(err.message, "error");
+    }
     finally { $("btn-run-unittests").disabled = false; }
   }
 
@@ -1780,16 +2005,39 @@
       $(id).addEventListener("input", () => {
         const val = parseFloat($(id).value);
         $(`lbl-${id}`).textContent = id === "mdp-n0" ? val.toFixed(1) : val.toFixed(2);
+        if (id === "mdp-n0" || id === "mdp-lam") {
+          syncMdpThm2Sliders(parseFloat($("mdp-n0").value), parseFloat($("mdp-lam").value));
+        }
         renderTheorem2Sim();
       });
     });
+    if ($("thm2-n0")) {
+      $("thm2-n0").addEventListener("input", () => {
+        syncMdpThm2Sliders(parseFloat($("thm2-n0").value), parseFloat($("thm2-lam").value));
+        renderTheorem2Sim();
+      });
+    }
+    if ($("thm2-lam")) {
+      $("thm2-lam").addEventListener("input", () => {
+        syncMdpThm2Sliders(parseFloat($("thm2-n0").value), parseFloat($("thm2-lam").value));
+        renderTheorem2Sim();
+      });
+    }
+    if ($("thm2-context")) {
+      $("thm2-context").addEventListener("change", renderTheorem2Sim);
+    }
+    if ($("btn-sim-default-params")) {
+      $("btn-sim-default-params").addEventListener("click", () => {
+        syncMdpThm2Sliders(2.0, 0.90);
+        renderTheorem2Sim();
+        toast("Parámetros de Mitcha restaurados (n₀ = 2.0, λ = 0.90)", "info");
+      });
+    }
     $("btn-mdp-recalc").addEventListener("click", recalcMdpLive);
     $("btn-mdp-reset-emp").addEventListener("click", () => {
       STATE.customP = null;
       $("mdp-gamma").value = 0.90; $("lbl-mdp-gamma").textContent = "0.90";
-      $("mdp-n0").value = 2.0; $("lbl-mdp-n0").textContent = "2.0";
-      $("mdp-lam").value = 0.90; $("lbl-mdp-lam").textContent = "0.90";
-      $("mdp-laplace").value = 0;
+      syncMdpThm2Sliders(2.0, 0.90);
       recalcMdpLive();
       toast("Valores empíricos restaurados", "info");
     });
@@ -1831,11 +2079,21 @@
     $("btn-gary-play").addEventListener("click", toggleGaryPlayback);
     $("btn-gary-prev").addEventListener("click", () => { stopGaryPlayback(); updateGaryStepView(STATE.garyActiveTurn - 1); });
     $("btn-gary-next").addEventListener("click", () => { stopGaryPlayback(); updateGaryStepView(STATE.garyActiveTurn + 1); });
+    document.querySelectorAll("#gary-walkthrough-bar .gw-pill").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        STATE.garyWalkthroughStep = btn.dataset.gw || "all";
+        const g = STATE.gary;
+        if (g && g.e_vector_vs_rival && g.e_vector_vs_rival.steps) {
+          const st = g.e_vector_vs_rival.steps[STATE.garyActiveTurn - 1];
+          if (st) renderGaryTreeAndInspector(st, g);
+        }
+      });
+    });
     $("btn-run-gary").addEventListener("click", async () => {
       stopGaryPlayback();
       try {
         $("btn-run-gary").disabled = true;
-        STATE.gary = await apiPost("/api/gary-dynamics", { horizon: parseInt($("gary-h").value, 10) || 4, gamma: parseFloat($("gary-gamma").value) || 0.95, rival_id: $("gary-rival").value || "axl_FirstByJoss", seed: parseInt($("gary-seed").value, 10) || 42 });
+        STATE.gary = await apiPost("/api/gary-dynamics", { horizon: parseInt($("gary-h").value, 10) || 2, gamma: parseFloat($("gary-gamma").value) || 0.90, rival_id: $("gary-rival").value || "axl_FirstByJoss", seed: parseInt($("gary-seed").value, 10) || 42 });
         renderGarySection();
         toast(`Partida Expectimax (H=${STATE.gary.horizon}, γ=${STATE.gary.gamma}) lista`, "success");
       } catch (err) { toast(err.message, "error"); }
@@ -1858,7 +2116,7 @@
       downloadText(`duelo_${d.player_a.id}_vs_${d.player_b.id}.csv`, lines.join("\n"), "text/csv;charset=utf-8");
     });
     $("btn-h2h-preset-paper").addEventListener("click", () => {
-      STATE.h2hSelected = ["gen1_rulito", "gen2_cloud", "gen3_gary", "gen4_base", "gen5_rl", "axl_TitForTat", "axl_Grudger", "axl_Defector", "axl_Alternator", "rival_switch_50"];
+      STATE.h2hSelected = ["gen1_cloud", "gen2_rulito", "gen3_gary", "gen4_base", "gen5_rl", "axl_TitForTat", "axl_Grudger", "axl_Defector", "axl_Alternator", "rival_switch_50"];
       renderChipSelector("h2h-chip-selector", STATE.h2hSelected);
       runH2HMatrix();
     });
@@ -1895,7 +2153,7 @@
       if (tpl) { $("b-py-code").value = tpl.code; $("b-name").value = tpl.title; $("b-desc").value = tpl.description; }
     });
     $("btn-test-strategy").addEventListener("click", async () => {
-      try { $("btn-test-strategy").disabled = true; const diag = await apiPost("/api/strategies/test", getBuilderPayload()); renderBuilderDiagnostics(diag); toast(`"${diag.name}" validada`, "success"); }
+      try { $("btn-test-strategy").disabled = true; const diag = await apiPost("/api/strategies/test", getBuilderPayload()); renderBuilderDiagnostics(diag); toast(`"${asText(diag.name)}" validada`, "success"); }
       catch (err) { toast(err.message, "error"); } finally { $("btn-test-strategy").disabled = false; }
     });
     $("btn-save-strategy").addEventListener("click", async () => {
@@ -1905,19 +2163,23 @@
     $("btn-run-unittests").addEventListener("click", runUnitTests);
     $("btn-run-script").addEventListener("click", runActiveScript);
     $("btn-stop-script").addEventListener("click", async () => {
-      if (STATE.activeScriptJobId) {
-        try { await apiPost(`/api/scripts/stop/${STATE.activeScriptJobId}`, {}); } catch (_e) {}
+      const jobId = STATE.activeScriptJobId;
+      if (!jobId) return;
+      $("btn-stop-script").disabled = true;
+      try {
+        await apiPost("/api/scripts/stop/" + jobId, {});
+        if (STATE.activeScriptJobId === jobId) $("script-status-badge").textContent = "Deteniendo…";
+      } catch (err) {
+        $("btn-stop-script").disabled = false;
+        toast(err.message, "error");
       }
-      stopScriptPolling();
-      $("script-status-badge").className = "badge badge-amber";
-      $("script-status-badge").textContent = "■ Detenido";
     });
     $("btn-clear-console").addEventListener("click", () => $("script-console-wrap").classList.add("hidden"));
     $("btn-copy-code").addEventListener("click", () => { const f = STATE.codeFiles && STATE.codeFiles[STATE.activeCodeIdx]; if (f) { navigator.clipboard.writeText(f.content); toast(`${f.filename} copiado`, "success"); } });
     $("btn-download-code").addEventListener("click", () => {
       const f = STATE.codeFiles && STATE.codeFiles[STATE.activeCodeIdx];
       if (!f) return;
-      if (f.filename.endsWith(".ipynb")) { window.open("/api/download-notebook", "_blank"); return; }
+      if (f.filename.endsWith(".ipynb")) { window.open(appUrl("/api/download-notebook"), "_blank"); return; }
       downloadText(f.filename, f.content, "text/x-python;charset=utf-8");
     });
   }
@@ -1945,23 +2207,12 @@
       STATE.thm2Events = [1, 0, 0];
 
       const tplSel = $("b-py-template");
-      tplSel.innerHTML = Object.entries(STATE.pythonTemplates).map(([k, v]) => `<option value="${k}">${v.title}</option>`).join("");
+      setSanitizedSelectOptions(tplSel, Object.entries(STATE.pythonTemplates).map(([k, v]) => `<option value="${k}">${v.title}</option>`).join(""));
       const firstKey = Object.keys(STATE.pythonTemplates)[0];
       if (firstKey) $("b-py-code").value = STATE.pythonTemplates[firstKey].code;
 
       refreshAllCatalogWidgets();
       updateDuelRlBarVisibility();
-
-      // Render Jacinto avatar & wire Future Proposal (Taller 6) buttons
-      if ($("jacinto-hero-avatar")) {
-        $("jacinto-hero-avatar").innerHTML = T5Voxel.renderVoxelAvatar("gen6_jacinto", { side: "left", move: "C", mood: "happy", size: 78 });
-      }
-      if ($("btn-jacinto-vs-alternator")) {
-        $("btn-jacinto-vs-alternator").addEventListener("click", () => openDuelDirectly("axl_Alternator", "gen6_jacinto"));
-      }
-      if ($("btn-play-jacinto")) {
-        $("btn-play-jacinto").addEventListener("click", () => { switchTab("play"); startHumanGame("gen6_jacinto"); });
-      }
 
       // Start initial playable Human-vs-AI session & render Axelrod Ring + all technical views
       await startHumanGame("axl_TitForTat");

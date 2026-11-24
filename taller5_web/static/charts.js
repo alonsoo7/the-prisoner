@@ -237,7 +237,7 @@
 
       if (cfg.yLabel) {
         ctx.save();
-        ctx.translate(13, pad.top + ph / 2);
+        ctx.translate(8, pad.top + ph / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
@@ -539,7 +539,7 @@
     function draw() {
       const { ctx, w, h } = setupCanvas(canvas);
       const showLegend = !cfg.hideLegend && nGrp > 1;
-      const pad = { left: 48, right: 16, top: showLegend ? 36 : 18, bottom: cfg.padBottom ?? 52 };
+      const pad = { left: 56, right: 16, top: showLegend ? 36 : 18, bottom: cfg.padBottom ?? 52 };
       const pw = w - pad.left - pad.right;
       const ph = h - pad.top - pad.bottom;
       const yOf = (v) => pad.top + ph - ((v - yMin) / Math.max(1e-9, yMax - yMin)) * ph;
@@ -677,7 +677,7 @@
 
       if (cfg.yLabel) {
         ctx.save();
-        ctx.translate(13, pad.top + ph / 2);
+        ctx.translate(8, pad.top + ph / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.fillStyle = "#334155";
         ctx.font = "600 11px Inter, sans-serif";
@@ -724,7 +724,7 @@
   }
 
   // =========================================================================
-  // 3. HORIZONTAL RANKING BAR CHART (Axelrod 1980, Harper 41, Mega 175)
+  // 3. HORIZONTAL RANKING BAR CHART (Axelrod 1980, Harper 37, Mega 171)
   // =========================================================================
   function renderHorizontalBarChart(canvas, cfg) {
     if (!canvas) return;
@@ -1222,6 +1222,10 @@
     const pdd = E[3].toFixed(2), qdd = (1 - E[3]).toFixed(2);
     const chooseC = fc >= fd;
 
+    const Lgamma = 1 / Math.max(1e-6, 1 - gamma);
+    const Lstr = Math.abs(Lgamma - Math.round(Lgamma)) < 0.05 ? String(Math.round(Lgamma)) : Lgamma.toFixed(1);
+    const gammaH = Math.pow(gamma, horizon);
+
     container.innerHTML = `
       <svg viewBox="0 0 960 340" width="100%" style="max-height:345px;display:block;font-family:Inter,sans-serif">
         <defs>
@@ -1233,110 +1237,69 @@
           </marker>
         </defs>
 
-        <!-- LEFT: EXPECTIMAX LIVE CALCULATION TREE -->
+        <!-- LEFT: PLAIN-LANGUAGE EXPLANATION OF h AND ÷ L_gamma -->
         <rect x="8" y="8" width="446" height="324" rx="12" fill="#f9fbfd" stroke="#d8e3ef"/>
-        <text x="231" y="30" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0f253c">
-          Cálculo Expectimax en Raíz (H=${horizon}, ${Math.pow(4, horizon)} hojas, γ=${gamma.toFixed(2)})
+        <text x="231" y="31" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0f253c">
+          ¿De dónde sale h y por qué dividimos por ${Lstr}?
         </text>
 
-        <!-- Root MAX -->
-        <rect x="151" y="42" width="160" height="36" rx="8" fill="#0f3a66"/>
-        <text x="231" y="57" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">
-          NODO MAX · Estado: ${currSt}
-        </text>
-        <text x="231" y="71" text-anchor="middle" font-size="10" font-family="JetBrains Mono,monospace" fill="#93c5fd">
-          ${isOpening ? "Turno 1: Regla Nice (C)" : `p(C|${currSt})=${pCurrC.toFixed(2)} | p(D)=${pCurrD.toFixed(2)}`}
-        </text>
+        <rect x="22" y="45" width="418" height="74" rx="9" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="34" y="64" font-size="11" font-weight="700" fill="#5b21b6">1. Cola infinita desde el turno +${horizon + 1} (V_Markov)</text>
+        <text x="34" y="82" font-size="10.2" fill="#334155">Después de la hoja s_${horizon}, suponemos que seguimos con reciprocidad (TFT)</text>
+        <text x="34" y="97" font-size="10.2" fill="#334155">sobre la cadena P(Eₜ) de la derecha. Eso da la suma futura descontada:</text>
+        <text x="34" y="112" font-size="10" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">V = [CC:${V[0].toFixed(1)}, CD:${V[1].toFixed(1)}, DC:${V[2].toFixed(1)}, DD:${V[3].toFixed(1)}] pts</text>
 
-        <!-- Root to Chance C / Chance D -->
-        <line x1="196" y1="78" x2="122" y2="114" stroke="${chooseC ? "#2e7d32" : "#cbd5e1"}" stroke-width="${chooseC ? 3.2 : 1.6}"/>
-        <line x1="266" y1="78" x2="340" y2="114" stroke="${!chooseC ? "#c62828" : "#cbd5e1"}" stroke-width="${!chooseC ? 3.2 : 1.6}"/>
+        <rect x="22" y="129" width="418" height="72" rx="9" fill="#f5f3ff" stroke="#ddd6fe"/>
+        <text x="34" y="148" font-size="11" font-weight="700" fill="#5b21b6">2. Traer esa cola al presente: h = γ^${horizon} · V_Markov</text>
+        <text x="34" y="166" font-size="10.2" fill="#334155">Como la cola empieza ${horizon} turnos después, se multiplica por γ^${horizon} = ${gammaH.toFixed(2)}:</text>
+        <text x="34" y="184" font-size="10" font-family="JetBrains Mono,monospace" font-weight="700" fill="#4c1d95">h = [CC:${LH[0].toFixed(1)}, CD:${LH[1].toFixed(1)}, DC:${LH[2].toFixed(1)}, DD:${LH[3].toFixed(1)}] pts</text>
+        <text x="34" y="196" font-size="9.4" fill="#64748b">Se suma a los ${horizon} pasos explícitos: Total descontado = g + h.</text>
 
-        <rect x="44" y="114" width="156" height="48" rx="9" fill="${chooseC ? "#e8f5e9" : "#f1f5f9"}" stroke="${chooseC ? "#2e7d32" : "#94a3b8"}" stroke-width="${chooseC ? 2.4 : 1.1}"/>
-        <text x="122" y="133" text-anchor="middle" font-size="11.5" font-weight="700" fill="${chooseC ? "#1b5e20" : "#475569"}">
-          ${chooseC ? "✓ " : ""}Acción C (Chance)
-        </text>
-        <text x="122" y="151" text-anchor="middle" font-size="12" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">
-          f̄(C) = ${fc.toFixed(4)}
-        </text>
-
-        <rect x="262" y="114" width="156" height="48" rx="9" fill="${!chooseC ? "#ffebee" : "#f1f5f9"}" stroke="${!chooseC ? "#c62828" : "#94a3b8"}" stroke-width="${!chooseC ? 2.4 : 1.1}"/>
-        <text x="340" y="133" text-anchor="middle" font-size="11.5" font-weight="700" fill="${!chooseC ? "#b71c1c" : "#475569"}">
-          ${!chooseC ? "✓ " : ""}Acción D (Chance)
-        </text>
-        <text x="340" y="151" text-anchor="middle" font-size="12" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">
-          f̄(D) = ${fd.toFixed(4)}
-        </text>
-
-        <!-- Sub-branches with exact p and 1-p labels -->
-        <line x1="94" y1="162" x2="66" y2="206" stroke="#2e7d32" stroke-width="1.6"/>
-        <text x="64" y="186" text-anchor="end" font-size="9.8" font-family="JetBrains Mono,monospace" fill="#166534">×${pCurrC.toFixed(2)}</text>
-
-        <line x1="150" y1="162" x2="176" y2="206" stroke="#c62828" stroke-width="1.6"/>
-        <text x="176" y="186" text-anchor="start" font-size="9.8" font-family="JetBrains Mono,monospace" fill="#991b1b">×${pCurrD.toFixed(2)}</text>
-
-        <line x1="312" y1="162" x2="286" y2="206" stroke="#2e7d32" stroke-width="1.6"/>
-        <text x="285" y="186" text-anchor="end" font-size="9.8" font-family="JetBrains Mono,monospace" fill="#166534">×${pCurrC.toFixed(2)}</text>
-
-        <line x1="368" y1="162" x2="396" y2="206" stroke="#c62828" stroke-width="1.6"/>
-        <text x="396" y="186" text-anchor="start" font-size="9.8" font-family="JetBrains Mono,monospace" fill="#991b1b">×${pCurrD.toFixed(2)}</text>
-
-        <!-- 4 Depth-1 Outcome Nodes with REAL calculated sub-tree values -->
-        <rect x="20" y="206" width="94" height="44" rx="7" fill="#dcfce7" stroke="#2e7d32"/>
-        <text x="67" y="223" text-anchor="middle" font-size="10.5" font-weight="700" fill="#166534">CC (R=+3)</text>
-        <text x="67" y="240" text-anchor="middle" font-size="10.8" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">v=${valCC.toFixed(3)}</text>
-
-        <rect x="128" y="206" width="94" height="44" rx="7" fill="#fee2e2" stroke="#dc2626"/>
-        <text x="175" y="223" text-anchor="middle" font-size="10.5" font-weight="700" fill="#991b1b">CD (S=+0)</text>
-        <text x="175" y="240" text-anchor="middle" font-size="10.8" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">v=${valCD.toFixed(3)}</text>
-
-        <rect x="240" y="206" width="94" height="44" rx="7" fill="#dbeafe" stroke="#1d4ed8"/>
-        <text x="287" y="223" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1e40af">DC (T=+5)</text>
-        <text x="287" y="240" text-anchor="middle" font-size="10.8" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">v=${valDC.toFixed(3)}</text>
-
-        <rect x="348" y="206" width="94" height="44" rx="7" fill="#ffedd5" stroke="#ea580c"/>
-        <text x="395" y="223" text-anchor="middle" font-size="10.5" font-weight="700" fill="#9a3412">DD (P=+1)</text>
-        <text x="395" y="240" text-anchor="middle" font-size="10.8" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">v=${valDD.toFixed(3)}</text>
-
-        <!-- Bottom Decision Summary Banner -->
-        <rect x="20" y="264" width="422" height="54" rx="8" fill="${chooseC ? "#ecfdf5" : "#fef2f2"}" stroke="${chooseC ? "#16a34a" : "#dc2626"}"/>
-        <text x="231" y="283" text-anchor="middle" font-size="11" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">
-          f̄(C) = ${pCurrC.toFixed(2)}×${valCC.toFixed(2)} + ${pCurrD.toFixed(2)}×${valCD.toFixed(2)} = ${fc.toFixed(3)}   |   f̄(D) = ${pCurrC.toFixed(2)}×${valDC.toFixed(2)} + ${pCurrD.toFixed(2)}×${valDD.toFixed(2)} = ${fd.toFixed(3)}
-        </text>
-        <text x="231" y="304" text-anchor="middle" font-size="11.5" font-weight="700" fill="${chooseC ? "#166534" : "#991b1b"}">
-          Decisión: ${chooseC ? "COOPERAR (C)" : "TRAICIONAR (D)"}   (margen Δf̄ = ${(fc - fd) >= 0 ? "+" : ""}${(fc - fd).toFixed(4)} pts/ronda)
-        </text>
+        <rect x="22" y="211" width="418" height="108" rx="9" fill="#ecfdf5" stroke="#86efac"/>
+        <text x="34" y="230" font-size="11" font-weight="700" fill="#14532d">3. ¿Por qué (g + h) ÷ ${Lstr} = puntos por ronda (f̄)?</text>
+        <text x="34" y="248" font-size="10.2" fill="#1e293b">Si ganaras 1 pt cada turno para siempre con descuento γ = ${gamma.toFixed(2)}:</text>
+        <text x="34" y="266" font-size="10.2" font-family="JetBrains Mono,monospace" font-weight="700" fill="#166534">1 + ${gamma.toFixed(2)} + ${(gamma*gamma).toFixed(2)} + ... = 1 / (1 − ${gamma.toFixed(2)}) = ${Lstr} pts</text>
+        <text x="34" y="285" font-size="10.2" fill="#1e293b">Por eso 3 pts/ronda para siempre suman ${(3*Lgamma).toFixed(1)} pts (g+h).</text>
+        <text x="34" y="303" font-size="10.3" font-weight="700" fill="#14532d">Dividir por ${Lstr} (equiv. ×${(1-gamma).toFixed(2)}) devuelve el puntaje por ronda (0..5).</text>
 
         <!-- RIGHT: 4-STATE MARKOV CHAIN (P_TFT(E_t)) -->
         <rect x="468" y="8" width="484" height="324" rx="12" fill="#f9fbfd" stroke="#d8e3ef"/>
         <text x="710" y="30" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0f253c">
-          Heurística Terminal en Hojas: Cadena de Markov P_TFT(Eₜ)
+          Cadena de Markov en Hojas: P_TFT(Eₜ)
         </text>
 
         <!-- Edges of P_TFT -->
-        <path d="M 568 92 C 524 38, 620 38, 602 88" fill="none" stroke="#2e7d32" stroke-width="2" marker-end="url(#arr-g)"/>
-        <text x="574" y="54" text-anchor="middle" font-size="10.5" font-family="JetBrains Mono,monospace" font-weight="700" fill="#1b5e20">p_CC=${pcc}</text>
+        <path d="M 568 92 C 524 46, 620 46, 602 88" fill="none" stroke="#2e7d32" stroke-width="2" marker-end="url(#arr-g)"/>
+        <rect x="537" y="42" width="74" height="17" rx="5" fill="#ffffff" stroke="#bbf7d0" stroke-width="1"/>
+        <text x="574" y="54" text-anchor="middle" font-size="10" font-family="JetBrains Mono,monospace" font-weight="700" fill="#1b5e20">p_CC=${pcc}</text>
 
         <path d="M 622 114 L 774 114" fill="none" stroke="#c62828" stroke-width="1.8" marker-end="url(#arr-r)"/>
-        <text x="698" y="106" text-anchor="middle" font-size="10.5" font-family="JetBrains Mono,monospace" fill="#b71c1c">1−p_CC=${qcc}</text>
+        <rect x="658" y="96" width="80" height="16" rx="5" fill="#ffffff" stroke="#fecaca" stroke-width="0.9"/>
+        <text x="698" y="108" text-anchor="middle" font-size="9.8" font-family="JetBrains Mono,monospace" fill="#b71c1c">1−p_CC=${qcc}</text>
 
         <path d="M 784 142 L 622 224" fill="none" stroke="#2e7d32" stroke-width="1.8" marker-end="url(#arr-g)"/>
-        <text x="734" y="192" text-anchor="middle" font-size="10.5" font-family="JetBrains Mono,monospace" fill="#1b5e20">p_CD=${pcd}</text>
+        <rect x="704" y="180" width="66" height="16" rx="5" fill="#ffffff" stroke="#bbf7d0" stroke-width="0.9"/>
+        <text x="737" y="191" text-anchor="middle" font-size="9.8" font-family="JetBrains Mono,monospace" fill="#1b5e20">p_CD=${pcd}</text>
 
         <path d="M 818 148 L 818 212" fill="none" stroke="#c62828" stroke-width="1.8" marker-end="url(#arr-r)"/>
-        <text x="866" y="184" text-anchor="middle" font-size="10.5" font-family="JetBrains Mono,monospace" fill="#b71c1c">1−p_CD=${qcd}</text>
+        <rect x="826" y="172" width="82" height="16" rx="5" fill="#ffffff" stroke="#fecaca" stroke-width="0.9"/>
+        <text x="867" y="184" text-anchor="middle" font-size="9.8" font-family="JetBrains Mono,monospace" fill="#b71c1c">1−p_CD=${qcd}</text>
 
         <path d="M 586 212 L 586 148" fill="none" stroke="#2e7d32" stroke-width="1.8" marker-end="url(#arr-g)"/>
-        <text x="536" y="184" text-anchor="middle" font-size="10.5" font-family="JetBrains Mono,monospace" fill="#1b5e20">p_DC=${pdc}</text>
+        <rect x="498" y="172" width="76" height="16" rx="5" fill="#ffffff" stroke="#bbf7d0" stroke-width="0.9"/>
+        <text x="536" y="184" text-anchor="middle" font-size="9.8" font-family="JetBrains Mono,monospace" fill="#1b5e20">p_DC=${pdc}</text>
 
         <path d="M 620 214 L 780 134" fill="none" stroke="#c62828" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#arr-r)"/>
-        <text x="664" y="164" text-anchor="middle" font-size="10" font-family="JetBrains Mono,monospace" fill="#991b1b">1−p_DC=${qdc}</text>
+        <rect x="624" y="152" width="80" height="16" rx="5" fill="#ffffff" stroke="#fecaca" stroke-width="0.9"/>
+        <text x="664" y="164" text-anchor="middle" font-size="9.5" font-family="JetBrains Mono,monospace" fill="#991b1b">1−p_DC=${qdc}</text>
 
         <path d="M 774 248 L 622 248" fill="none" stroke="#2e7d32" stroke-width="1.8" marker-end="url(#arr-g)"/>
-        <text x="698" y="264" text-anchor="middle" font-size="10.5" font-family="JetBrains Mono,monospace" fill="#1b5e20">p_DD=${pdd}</text>
+        <rect x="662" y="253" width="72" height="16" rx="5" fill="#ffffff" stroke="#bbf7d0" stroke-width="0.9"/>
+        <text x="698" y="264" text-anchor="middle" font-size="9.8" font-family="JetBrains Mono,monospace" fill="#1b5e20">p_DD=${pdd}</text>
 
         <path d="M 848 264 C 902 308, 912 222, 858 236" fill="none" stroke="#c62828" stroke-width="2" marker-end="url(#arr-r)"/>
-        <text x="896" y="286" text-anchor="middle" font-size="10.5" font-family="JetBrains Mono,monospace" font-weight="700" fill="#b71c1c">1−p_DD=${qdd}</text>
+        <rect x="854" y="274" width="84" height="17" rx="5" fill="#ffffff" stroke="#fecaca" stroke-width="0.9"/>
+        <text x="896" y="286" text-anchor="middle" font-size="9.8" font-family="JetBrains Mono,monospace" font-weight="700" fill="#b71c1c">1−p_DD=${qdd}</text>
 
         <!-- 4 State Nodes with V_Markov and leaf_h -->
         <g transform="translate(586,116)">
@@ -1367,11 +1330,254 @@
           <text y="19" text-anchor="middle" font-size="9" font-family="JetBrains Mono,monospace" fill="#334155">h=${LH[3].toFixed(1)}</text>
         </g>
 
-        <text x="710" y="316" text-anchor="middle" font-size="10.5" fill="#475569">
-          V = (I − γP)⁻¹PR  ·  h = γ^H · V (inyectado en cada hoja)  ·  Borde negro = estado actual
+        <text x="710" y="318" text-anchor="middle" font-size="10.2" fill="#475569">
+          V = (I − γP)⁻¹PR  ·  h = γ^${horizon} · V  ·  Borde negro = estado actual (${currSt})
         </text>
       </svg>
     `;
+  }
+
+  function renderGaryFullTreeH2SVG(container, stepData, gamma, opts) {
+    if (!container) return;
+    const g = gamma != null ? gamma : 0.90;
+    const turn = stepData && stepData.turn ? stepData.turn : 1;
+    const focus = (opts && opts.focusStep) || "all";
+    const selectedLeafIdx = opts && opts.selectedLeafIdx != null ? opts.selectedLeafIdx : null;
+    const onSelectLeaf = opts && typeof opts.onSelectLeaf === "function" ? opts.onSelectLeaf : null;
+
+    if (!stepData || stepData.is_opening) {
+      container.innerHTML = `
+        <div style="padding:14px 16px;font-size:13px;color:#475569;text-align:center">
+          <strong>Turno 1 (Apertura Nice):</strong> Sin historial previo, Gary abre directamente con <strong>Cooperar ($C$)</strong>. Avanza al <strong>Turno 2</strong> o posterior para ver el árbol Expectimax completo de 16 hojas ($H=2$).
+        </div>`;
+      return;
+    }
+
+    const tree = stepData.tree_h2;
+    if (!tree || !tree.level1 || tree.level1.length !== 4) {
+      const h = stepData.horizon || 4;
+      container.innerHTML = `
+        <div style="padding:14px 16px;font-size:13px;color:#475569;text-align:center">
+          Con <strong>H = ${h}</strong> el árbol tiene <strong>${Math.pow(4, h)} hojas</strong>. Selecciona <strong>H = 2</strong> arriba para desplegar el árbol Expectimax completo de <strong>16 hojas</strong> en pantalla.
+        </div>`;
+      return;
+    }
+
+    const fc = stepData.f_c != null ? stepData.f_c : 0;
+    const fd = stepData.f_d != null ? stepData.f_d : 0;
+    const chooseC = fc >= fd;
+    const p0 = tree.p_c != null ? tree.p_c : 0;
+    const q0 = 1 - p0;
+    const Lgamma = 1 / Math.max(1e-6, 1 - g);
+    const Lstr = Math.abs(Lgamma - Math.round(Lgamma)) < 0.05 ? String(Math.round(Lgamma)) : Lgamma.toFixed(1);
+
+    // Stage opacity helpers for interactive 4-step walkthrough
+    const opProbs  = focus === "all" || focus === "probs" || focus === "up" ? 1 : 0.28;
+    const opDown   = focus === "all" || focus === "down"  || focus === "up" ? 1 : 0.30;
+    const opLeaves = focus === "all" || focus === "leaves" || focus === "down" ? 1 : 0.34;
+    const opUp     = focus === "all" || focus === "up" ? 1 : 0.36;
+
+    const palette = {
+      CC: { fill: "#dcfce7", stroke: "#2e7d32", text: "#14532d" },
+      CD: { fill: "#fee2e2", stroke: "#dc2626", text: "#7f1d1d" },
+      DC: { fill: "#dbeafe", stroke: "#1d4ed8", text: "#1e3a8a" },
+      DD: { fill: "#ffedd5", stroke: "#ea580c", text: "#7c2d12" },
+    };
+
+    // Shift entire tree +82px right to leave a clean LEFT RAIL for stage labels (viewBox 0 0 1082 486)
+    const OX = 82;
+    const l1Centers = [136 + OX, 376 + OX, 624 + OX, 864 + OX];
+    const leafCenters = [
+      46, 106, 166, 226,
+      286, 346, 406, 466,
+      534, 594, 654, 714,
+      774, 834, 894, 954,
+    ].map((x) => x + OX);
+
+    let edgesSvg = "";
+    let probBadgesSvg = "";
+    let nodesSvg = "";
+
+    // Root -> Root CHANCE (C / D)
+    edgesSvg += `<line x1="${450 + OX}" y1="74" x2="${256 + OX}" y2="106" stroke="${chooseC ? "#2e7d32" : "#cbd5e1"}" stroke-width="${chooseC ? 3.2 : 1.5}" opacity="${opUp}"/>`;
+    edgesSvg += `<line x1="${550 + OX}" y1="74" x2="${744 + OX}" y2="106" stroke="${!chooseC ? "#c62828" : "#cbd5e1"}" stroke-width="${!chooseC ? 3.2 : 1.5}" opacity="${opUp}"/>`;
+
+    const rootChanceX = [256 + OX, 256 + OX, 744 + OX, 744 + OX];
+    const rootBranchChosen = [chooseC, chooseC, !chooseC, !chooseC];
+    const rootEdgeProb = [p0, q0, p0, q0];
+    const rootEdgeColor = ["#16a34a", "#dc2626", "#16a34a", "#dc2626"];
+
+    tree.level1.forEach((n1, i) => {
+      const cx1 = l1Centers[i];
+      const rx = rootChanceX[i];
+      const onBestRoot = rootBranchChosen[i];
+      const pEdge = rootEdgeProb[i];
+      const stPal = palette[n1.s1] || palette.CC;
+      const isReachable = pEdge > 0.0001;
+
+      // Edge from Root CHANCE to L1 MAX
+      edgesSvg += `<line x1="${rx}" y1="146" x2="${cx1}" y2="188" stroke="${onBestRoot ? rootEdgeColor[i] : "#cbd5e1"}" stroke-width="${onBestRoot ? 2.4 : 1.2}" stroke-dasharray="${isReachable ? "none" : "4,3"}" opacity="${Math.max(opProbs, opDown)}"/>`;
+
+      // Crisp white pill badge for Rival C / Rival D probability (ZERO overlap with edge!)
+      const mx = (rx + cx1) / 2;
+      const my = 166;
+      const pillBorder = focus === "probs" ? "#7b3fa0" : onBestRoot ? rootEdgeColor[i] : "#cbd5e1";
+      probBadgesSvg += `
+        <g opacity="${opProbs}">
+          <rect x="${mx - 31}" y="${my - 13}" width="62" height="25" rx="6" fill="#ffffff" stroke="${pillBorder}" stroke-width="${focus === "probs" ? 1.8 : 1}"/>
+          <text x="${mx}" y="${my - 2}" text-anchor="middle" font-size="8.2" font-weight="700" fill="${i % 2 === 0 ? "#166534" : "#991b1b"}">${i % 2 === 0 ? "Rival C" : "Rival D"}</text>
+          <text x="${mx}" y="${my + 8.5}" text-anchor="middle" font-size="8.4" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">×${pEdge.toFixed(2)}</text>
+        </g>`;
+
+      // L1 MAX Node Box
+      nodesSvg += `
+        <g opacity="${Math.max(opDown, opUp)}">
+          <rect x="${cx1 - 60}" y="188" width="120" height="48" rx="8" fill="${stPal.fill}" stroke="${onBestRoot ? stPal.stroke : "#cbd5e1"}" stroke-width="${onBestRoot ? 2.2 : 1.1}"/>
+          <text x="${cx1}" y="203" text-anchor="middle" font-size="10" font-weight="700" fill="${stPal.text}">MAX · ${n1.s1} (r₁=+${n1.r1})</text>
+          <text x="${cx1}" y="217" text-anchor="middle" font-size="9.4" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">mejor ${n1.chosen}: ${n1.val.toFixed(2)}</text>
+          <text x="${cx1}" y="230" text-anchor="middle" font-size="8.5" font-family="JetBrains Mono,monospace" fill="${focus === "probs" ? "#5b21b6" : "#475569"}" font-weight="${focus === "probs" ? "700" : "400"}">p(C|${n1.s1})=${n1.p_c.toFixed(2)}</text>
+        </g>`;
+
+      // Two L1 CHANCE children: C and D
+      const chCxC = (leafCenters[i * 4] + leafCenters[i * 4 + 1]) / 2;
+      const chCxD = (leafCenters[i * 4 + 2] + leafCenters[i * 4 + 3]) / 2;
+      const chooseL1C = n1.chosen === "C";
+      const actCActive = onBestRoot && chooseL1C;
+      const actDActive = onBestRoot && !chooseL1C;
+
+      edgesSvg += `<line x1="${cx1 - 24}" y1="236" x2="${chCxC}" y2="270" stroke="${actCActive ? "#2e7d32" : chooseL1C ? "#86efac" : "#e2e8f0"}" stroke-width="${actCActive ? 2.4 : 1.2}" opacity="${Math.max(opDown, opUp)}"/>`;
+      edgesSvg += `<line x1="${cx1 + 24}" y1="236" x2="${chCxD}" y2="270" stroke="${actDActive ? "#c62828" : !chooseL1C ? "#fca5a5" : "#e2e8f0"}" stroke-width="${actDActive ? 2.4 : 1.2}" opacity="${Math.max(opDown, opUp)}"/>`;
+
+      nodesSvg += `
+        <g opacity="${opUp}">
+          <rect x="${chCxC - 45}" y="270" width="90" height="32" rx="14" fill="${actCActive ? "#e8f5e9" : "#f8fafc"}" stroke="${actCActive ? "#2e7d32" : chooseL1C ? "#86efac" : "#cbd5e1"}" stroke-width="${actCActive ? 2 : 1}"/>
+          <text x="${chCxC}" y="283" text-anchor="middle" font-size="9" font-weight="700" fill="${chooseL1C ? "#166534" : "#64748b"}">${chooseL1C ? "✓ " : ""}A₂=C</text>
+          <text x="${chCxC}" y="296" text-anchor="middle" font-size="9.2" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">${n1.exp_c.toFixed(2)} pts/r</text>
+        </g>
+        <g opacity="${opUp}">
+          <rect x="${chCxD - 45}" y="270" width="90" height="32" rx="14" fill="${actDActive ? "#ffebee" : "#f8fafc"}" stroke="${actDActive ? "#c62828" : !chooseL1C ? "#fca5a5" : "#cbd5e1"}" stroke-width="${actDActive ? 2 : 1}"/>
+          <text x="${chCxD}" y="283" text-anchor="middle" font-size="9" font-weight="700" fill="${!chooseL1C ? "#991b1b" : "#64748b"}">${!chooseL1C ? "✓ " : ""}A₂=D</text>
+          <text x="${chCxD}" y="296" text-anchor="middle" font-size="9.2" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">${n1.exp_d.toFixed(2)} pts/r</text>
+        </g>`;
+
+      // 4 Terminal Leaves under this L1 MAX node (explicit g, +h, =Total, ÷L_gamma, f̄!)
+      const p1 = n1.p_c;
+      const q1 = 1 - p1;
+      n1.leaves.forEach((lf, j) => {
+        const lIdx = i * 4 + j;
+        const lx = leafCenters[lIdx];
+        const parentX = j < 2 ? chCxC : chCxD;
+        const leafProb = j % 2 === 0 ? p1 : q1;
+        const isActiveLeaf = (j < 2 && actCActive) || (j >= 2 && actDActive);
+        const isSelected = selectedLeafIdx === lIdx;
+        const lPal = palette[lf.s2] || palette.CC;
+        const tot = lf.g + lf.h;
+
+        edgesSvg += `<line x1="${parentX}" y1="302" x2="${lx}" y2="338" stroke="${isActiveLeaf ? (j % 2 === 0 ? "#16a34a" : "#dc2626") : "#e2e8f0"}" stroke-width="${isActiveLeaf ? 1.8 : 1}" stroke-dasharray="${leafProb > 0.0001 ? "none" : "3,3"}" opacity="${Math.max(opProbs, opDown)}"/>`;
+
+        const pmx = (parentX + lx) / 2;
+        probBadgesSvg += `
+          <g opacity="${opProbs}">
+            <rect x="${pmx - 15}" y="312" width="30" height="13" rx="4" fill="#ffffff" stroke="${focus === "probs" ? "#7b3fa0" : "#e2e8f0"}" stroke-width="${focus === "probs" ? 1.2 : 0.7}"/>
+            <text x="${pmx}" y="321.5" text-anchor="middle" font-size="7.8" font-family="JetBrains Mono,monospace" font-weight="${isActiveLeaf || focus === "probs" ? "700" : "400"}" fill="${isActiveLeaf ? "#0f253c" : "#64748b"}">${leafProb.toFixed(2)}</text>
+          </g>`;
+
+        nodesSvg += `
+          <g class="gary-leaf-node" data-leaf-idx="${lIdx}" style="cursor:pointer" opacity="${isSelected ? 1 : opLeaves}">
+            <rect x="${lx - 27}" y="338" width="54" height="106" rx="7" fill="${isSelected || isActiveLeaf ? lPal.fill : "#f8fafc"}" stroke="${isSelected ? "#0f253c" : isActiveLeaf ? lPal.stroke : "#cbd5e1"}" stroke-width="${isSelected ? 2.6 : isActiveLeaf ? 1.8 : 1}"/>
+            <text x="${lx}" y="352" text-anchor="middle" font-size="9.5" font-weight="700" fill="${isSelected || isActiveLeaf ? lPal.text : "#475569"}">${lf.s2}</text>
+            <text x="${lx}" y="367" text-anchor="middle" font-size="8.0" font-family="JetBrains Mono,monospace" font-weight="${focus === "down" ? "700" : "400"}" fill="${focus === "down" ? "#0f3a66" : "#334155"}">g=${lf.g.toFixed(1)}</text>
+            <text x="${lx}" y="380" text-anchor="middle" font-size="8.0" font-family="JetBrains Mono,monospace" font-weight="${focus === "leaves" ? "700" : "400"}" fill="#6b21a8">+h=${lf.h.toFixed(1)}</text>
+            <line x1="${lx - 21}" y1="387" x2="${lx + 21}" y2="387" stroke="#94a3b8" stroke-width="0.8"/>
+            <text x="${lx}" y="399" text-anchor="middle" font-size="8.2" font-family="JetBrains Mono,monospace" font-weight="700" fill="#334155">=${tot.toFixed(1)}</text>
+            <text x="${lx}" y="413" text-anchor="middle" font-size="7.4" font-family="JetBrains Mono,monospace" fill="#64748b">÷${Lstr} ↓</text>
+            <text x="${lx}" y="431" text-anchor="middle" font-size="9.8" font-family="JetBrains Mono,monospace" font-weight="700" fill="${isSelected || isActiveLeaf ? "#0f253c" : "#475569"}">${lf.f.toFixed(2)}</text>
+          </g>`;
+      });
+    });
+
+    // LEFT RAIL stage guide boxes
+    const railSvg = `
+      <g>
+        <rect x="10" y="34" width="76" height="40" rx="7" fill="#eff6ff" stroke="#0f3a66" stroke-width="1.2"/>
+        <text x="48" y="49" text-anchor="middle" font-size="8.4" font-weight="700" fill="#0f3a66">HOY (MAX)</text>
+        <text x="48" y="63" text-anchor="middle" font-size="7.5" fill="#475569">Elijo A₁</text>
+
+        <rect x="10" y="106" width="76" height="40" rx="7" fill="#f8fafc" stroke="#64748b" stroke-width="1.1"/>
+        <text x="48" y="121" text-anchor="middle" font-size="8.3" font-weight="700" fill="#334155">AZAR 1</text>
+        <text x="48" y="135" text-anchor="middle" font-size="7.3" fill="#64748b">Promedia ×p</text>
+
+        <rect x="10" y="188" width="76" height="48" rx="7" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.1"/>
+        <text x="48" y="203" text-anchor="middle" font-size="8.3" font-weight="700" fill="#1e40af">TURNO +1</text>
+        <text x="48" y="216" text-anchor="middle" font-size="7.3" fill="#475569">Sumo +r₁</text>
+        <text x="48" y="228" text-anchor="middle" font-size="7.3" fill="#475569">y elijo A₂</text>
+
+        <rect x="10" y="270" width="76" height="32" rx="7" fill="#f8fafc" stroke="#64748b" stroke-width="1.1"/>
+        <text x="48" y="284" text-anchor="middle" font-size="8.3" font-weight="700" fill="#334155">AZAR 2</text>
+        <text x="48" y="296" text-anchor="middle" font-size="7.2" fill="#64748b">Promedia ×p</text>
+
+        <rect x="10" y="338" width="76" height="106" rx="7" fill="#f5f3ff" stroke="#6b21a8" stroke-width="1.3"/>
+        <text x="48" y="354" text-anchor="middle" font-size="8.4" font-weight="700" fill="#5b21b6">HOJAS (+2)</text>
+        <text x="48" y="370" text-anchor="middle" font-size="7.4" fill="#334155">g = r₁+γr₂</text>
+        <text x="48" y="384" text-anchor="middle" font-size="7.4" fill="#6b21a8">+ h (Markov)</text>
+        <text x="48" y="399" text-anchor="middle" font-size="7.6" font-weight="700" fill="#334155">= Total pts</text>
+        <text x="48" y="414" text-anchor="middle" font-size="7.3" fill="#64748b">÷ ${Lstr} (×${(1-g).toFixed(2)})</text>
+        <text x="48" y="431" text-anchor="middle" font-size="8.0" font-weight="700" fill="#0f253c">= pts/ronda</text>
+      </g>`;
+
+    const rootCLine = `f̄(C) = ${p0.toFixed(2)}×${tree.level1[0].val.toFixed(2)} + ${q0.toFixed(2)}×${tree.level1[1].val.toFixed(2)} = ${fc.toFixed(3)}`;
+    const rootDLine = `f̄(D) = ${p0.toFixed(2)}×${tree.level1[2].val.toFixed(2)} + ${q0.toFixed(2)}×${tree.level1[3].val.toFixed(2)} = ${fd.toFixed(3)}`;
+
+    container.innerHTML = `
+      <svg viewBox="0 0 1082 476" width="100%" style="display:block;font-family:Inter,sans-serif">
+        <rect x="3" y="3" width="1076" height="470" rx="12" fill="#fcfdff" stroke="#d8e3ef"/>
+        <text x="541" y="23" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0f253c">
+          Árbol Expectimax Completo (H = 2 · 16 Hojas · γ = ${g.toFixed(2)} · divisor 1/(1−γ) = ${Lstr}) — Turno ${turn}
+        </text>
+
+        ${railSvg}
+        ${edgesSvg}
+
+        <!-- Root MAX -->
+        <g opacity="${opUp}">
+          <rect x="${380 + OX}" y="34" width="240" height="40" rx="9" fill="#0f3a66"/>
+          <text x="${500 + OX}" y="50" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">
+            RAÍZ MAX · Estado hoy: ${tree.root_state} → Elige ${chooseC ? "C" : "D"}
+          </text>
+          <text x="${500 + OX}" y="65" text-anchor="middle" font-size="9.6" font-family="JetBrains Mono,monospace" fill="#93c5fd">
+            p(C|${tree.root_state})=${p0.toFixed(2)}  |  p(D)=${q0.toFixed(2)}
+          </text>
+        </g>
+
+        <!-- Root CHANCE C -->
+        <g opacity="${opUp}">
+          <rect x="${146 + OX}" y="106" width="220" height="40" rx="16" fill="${chooseC ? "#e8f5e9" : "#f1f5f9"}" stroke="${chooseC ? "#2e7d32" : "#94a3b8"}" stroke-width="${chooseC ? 2.4 : 1.1}"/>
+          <text x="${256 + OX}" y="121" text-anchor="middle" font-size="10.2" font-weight="700" fill="${chooseC ? "#1b5e20" : "#475569"}">${chooseC ? "✓ " : ""}A₁ = Cooperar (C)</text>
+          <text x="${256 + OX}" y="137" text-anchor="middle" font-size="9.2" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">${rootCLine}</text>
+        </g>
+
+        <!-- Root CHANCE D -->
+        <g opacity="${opUp}">
+          <rect x="${634 + OX}" y="106" width="220" height="40" rx="16" fill="${!chooseC ? "#ffebee" : "#f1f5f9"}" stroke="${!chooseC ? "#c62828" : "#94a3b8"}" stroke-width="${!chooseC ? 2.4 : 1.1}"/>
+          <text x="${744 + OX}" y="121" text-anchor="middle" font-size="10.2" font-weight="700" fill="${!chooseC ? "#b71c1c" : "#475569"}">${!chooseC ? "✓ " : ""}A₁ = Traicionar (D)</text>
+          <text x="${744 + OX}" y="137" text-anchor="middle" font-size="9.2" font-family="JetBrains Mono,monospace" font-weight="700" fill="#0f253c">${rootDLine}</text>
+        </g>
+
+        ${nodesSvg}
+        ${probBadgesSvg}
+
+        <text x="541" y="463" text-anchor="middle" font-size="10" fill="#475569">
+          Haz clic en cualquiera de las 16 hojas para ver su cuenta exacta paso a paso aquí abajo (bajar g → sumar cola h → dividir por ${Lstr} = pts/ronda).
+        </text>
+      </svg>`;
+
+    if (onSelectLeaf) {
+      container.querySelectorAll(".gary-leaf-node").forEach((el) => {
+        el.addEventListener("click", () => {
+          onSelectLeaf(parseInt(el.dataset.leafIdx, 10));
+        });
+      });
+    }
   }
 
   // Responsive redraw on window resize
@@ -1392,5 +1598,6 @@
     renderBoxplotChart,
     renderHeatmap,
     renderGaryMarkovSVG,
+    renderGaryFullTreeH2SVG,
   };
 })();

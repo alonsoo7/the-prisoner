@@ -4,10 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dilema del Prisionero Iterado — Juego Interactivo y Agentes Inteligentes</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
-  <link rel="stylesheet" href="/static/styles.css" />
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <link rel="stylesheet" href="static/katex/katex.min.css?v=20261123i" />
+  <link rel="stylesheet" href="static/styles.css?v=20261123i" />
+  <script defer src="static/katex/katex.min.js?v=20261123i"></script>
+  <script defer src="static/katex/contrib/auto-render.min.js?v=20261123i"></script>
 </head>
 <body class="latex-theme">
   <div class="app-shell">
@@ -41,10 +41,7 @@
           <span class="nav-btn-left"><span class="nav-icon">∿</span><span>Aprendizaje Online (RL)</span></span>
         </button>
         <button class="nav-btn" data-tab="gary">
-          <span class="nav-btn-left"><span class="nav-icon">⑂</span><span>Búsqueda Expectimax</span></span>
-        </button>
-        <button class="nav-btn" data-tab="future">
-          <span class="nav-btn-left"><span class="nav-icon">🦜</span><span>¿Mejora a Futuro? Jacinto</span></span>
+          <span class="nav-btn-left"><span class="nav-icon">⑂</span><span>Ref. Expectimax (Gary)</span></span>
         </button>
       </nav>
 
@@ -56,6 +53,9 @@
         <button class="nav-btn" data-tab="studio">
           <span class="nav-btn-left"><span class="nav-icon">＋</span><span>Estrategias y Código</span></span>
           <span class="nav-badge" id="nav-custom-count">0</span>
+        </button>
+        <button class="nav-btn" data-tab="about">
+          <span class="nav-btn-left"><span class="nav-icon">ⓘ</span><span>About</span></span>
         </button>
       </nav>
 
@@ -112,7 +112,7 @@
             <div class="card-header">
               <div>
                 <h3 class="card-title">Elige tu Rival</h3>
-                <p class="card-subtitle">Desde estrategas icónicos de 1980 hasta nuestros agentes de búsqueda Expectimax y aprendizaje por refuerzo online</p>
+                <p class="card-subtitle">Desde estrategas icónicos de 1980 hasta las generaciones del MDP con Bellman, RL con olvido (<code>Mitcha</code>) y referencia Expectimax</p>
               </div>
               <div class="field compact" style="min-width:190px">
                 <select id="play-opponent-select"></select>
@@ -139,12 +139,11 @@
                   <label for="ring-inject-select">Escenario del Torneo de Axelrod (1980)</label>
                   <select id="ring-inject-select">
                     <option value="none" selected>Torneo Original (15 estrategias clásicas de 1980)</option>
-                    <option value="gen1_rulito">+ Inyectar 1. Rulito (Miope γ=0)</option>
-                    <option value="gen2_cloud">+ Inyectar 2. Cloud (1-Step γ=0.90)</option>
-                    <option value="gen3_gary">+ Inyectar 3. Gary (Expectimax H=4 + Markov)</option>
+                    <option value="gen1_cloud">+ Inyectar 1. Cloud (Miope γ=0 · Taller IV Sec. 7)</option>
+                    <option value="gen2_rulito">+ Inyectar 2. Rulito (1-Step γ=0.90 · Taller IV Sec. 8)</option>
+                    <option value="gen3_gary">+ Inyectar 3. Gary (Expectimax H=2 + Markov)</option>
                     <option value="gen4_base">+ Inyectar 4. Base MDP Fija (CDDC)</option>
                     <option value="gen5_rl">+ Inyectar 5. Mitcha (RL Olvido)</option>
-                    <option value="gen6_jacinto">+ Inyectar 6. Jacinto (RL + Safe UCB)</option>
                   </select>
                 </div>
               </div>
@@ -187,11 +186,11 @@
                 <div class="field wide">
                   <label for="t10-gen-select">Generación a inspeccionar en detalle (16 jugadores · 10 semillas independientes)</label>
                   <select id="t10-gen-select">
-                    <option value="4" selected>5. RL Olvido (n₀=2.0, λ=0.90) — Puesto #1/16</option>
-                    <option value="2">3. Expectimax H=4 + Markov — Puesto #1/16</option>
+                    <option value="4" selected>5. Mitcha (RL Olvido · n₀=2.0, λ=0.90) — Puesto #1/16</option>
+                    <option value="2">3. Gary (Expectimax H=2 + Markov) — Puesto #1/16</option>
                     <option value="3">4. Base MDP Fija (CDDC) — Puesto #4/16</option>
-                    <option value="1">2. Cloud (1-Step γ=0.90) — Puesto #6/16</option>
-                    <option value="0">1. Rulito (Miope γ=0) — Puesto #11/16</option>
+                    <option value="1">2. Rulito (1-Step γ=0.90) — Puesto #6/16</option>
+                    <option value="0">1. Cloud (Miope γ=0) — Puesto #11/16</option>
                   </select>
                 </div>
               </div>
@@ -222,11 +221,11 @@
             </div>
 
             <div id="t10-full-grid" class="grid-3 hidden">
-              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-0" style="color:#d62728">1. Rulito</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-0"></canvas></div></article>
-              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-1" style="color:#ef6c00">2. Cloud</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-1"></canvas></div></article>
-              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-2" style="color:#7b3fa0">3. Expectimax</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-2"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-0" style="color:#d62728">1. Cloud</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-0"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-1" style="color:#ef6c00">2. Rulito</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-1"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-2" style="color:#7b3fa0">3. Gary</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-2"></canvas></div></article>
               <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-3" style="color:#1565c0">4. Base CDDC</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-3"></canvas></div></article>
-              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-4" style="color:#2e7d32">5. RL Olvido</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-4"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><h3 id="t10-title-4" style="color:#2e7d32">5. Mitcha</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-4"></canvas></div></article>
               <article class="chart-card"><div class="chart-card-head"><h3>Distribución 10 Semillas</h3></div><div class="canvas-wrap compact-bar"><canvas id="cv-t10-box-grid"></canvas></div></article>
             </div>
           </div>
@@ -250,19 +249,19 @@
                 <div class="kpi-sub">Transiciones → política base <span class="mono">CDDC</span></div>
               </div>
               <div class="kpi-card green">
-                <div class="kpi-label">RL con Olvido · Axelrod</div>
+                <div class="kpi-label">Mitcha (RL Olvido) · Axelrod</div>
                 <div class="kpi-value">#1 / 16</div>
-                <div class="kpi-sub">$2.632 \pm 0.014$ pts/ronda (10 semillas)</div>
+                <div class="kpi-sub">$2.650 \pm 0.018$ pts/ronda (100% #1 en 10 seeds)</div>
               </div>
-              <div class="kpi-card purple">
-                <div class="kpi-label">Expectimax + Markov</div>
-                <div class="kpi-value">#2 / 41</div>
-                <div class="kpi-sub">Harper ($2.808$) · #10/175 Mega-Torneo</div>
+              <div class="kpi-card blue">
+                <div class="kpi-label">Benchmark Harper (37 jug.)</div>
+                <div class="kpi-value">#15 / 37</div>
+                <div class="kpi-sub">$2.685 \pm 0.014$ (vs Base #20 · $2.579$)</div>
               </div>
               <div class="kpi-card green">
-                <div class="kpi-label">Ganancia Online (175 est.)</div>
-                <div class="kpi-value">+77 puestos</div>
-                <div class="kpi-sub">De #100 (Base fija) a <strong>#23</strong> con olvido</div>
+                <div class="kpi-label">Salto en Mega-Torneo (171)</div>
+                <div class="kpi-value">+78 puestos</div>
+                <div class="kpi-sub">De #99 (Base) a <strong>#21/171</strong> ($2.795$)</div>
               </div>
             </div>
 
@@ -334,16 +333,16 @@
                 </div>
               </div>
               <div class="table-wrap">
-                <table class="data-table">
+                <table class="data-table table-compact">
                   <thead>
                     <tr>
                       <th>Escenario</th>
                       <th>Protocolo</th>
-                      <th class="text-right">1. Rulito</th>
-                      <th class="text-right">2. Cloud</th>
-                      <th class="text-right">3. Expectimax</th>
+                      <th class="text-right">1. Cloud</th>
+                      <th class="text-right">2. Rulito</th>
+                      <th class="text-right">3. Gary</th>
                       <th class="text-right">4. Base CDDC</th>
-                      <th class="text-right">5. RL Olvido</th>
+                      <th class="text-right">5. Mitcha (RL)</th>
                       <th>Inspeccionar</th>
                     </tr>
                   </thead>
@@ -358,6 +357,19 @@
         <!-- SECTION 4: MODELO MDP Y BELLMAN -->
         <!-- =============================================================== -->
         <section id="tab-mdp" class="tab-section">
+          <div class="mitcha-hero-card">
+            <div class="mitcha-hero-photo" id="mitcha-hero-avatar" title="Mitcha (RL MDP con Olvido)"></div>
+            <div class="gary-hero-body">
+              <div class="gary-hero-top">
+                <h4 class="mitcha-hero-title">Mitcha · Modelo MDP ($8 \times 4$), Bellman ($\Delta V \le 0.000001$) y Olvido</h4>
+                <div class="gary-hero-actions">
+                  <a class="btn btn-success btn-sm" href="taller.pdf" target="_blank" rel="noopener">📄 Informe Taller 5 (PDF)</a>
+                </div>
+              </div>
+              <p><strong>Mitcha</strong> es el agente central del Taller 5: parte de la matriz de transición empírica $T_0$ ($8 \times 4$, estimada sobre $173{,}130$ transiciones) cuya solución exacta por <em>Value Iteration</em> ($\max_s |V^{(k)}(s)-V^{(k-1)}(s)| \le 0.000001$, $\gamma = 0.90$) produce la política base $\pi_0 = \mathrm{CDDC}$, y luego actualiza $T_t$ en línea con contador efectivo $n_k = \lambda n_{k-1} + 1$ ($n_0 = 2.0$, $\lambda = 0.90$). Alcanza <strong>#1/16 ($2.650 \pm 0.018$, 100% #1)</strong> en Axelrod 1980 y sube <strong>+78 puestos</strong> en el Mega-Torneo (#99 → #21).</p>
+            </div>
+          </div>
+
           <div class="subtabs">
             <button class="subtab-btn active" data-subtab="mdp-core">Matriz 8×4 y Bellman</button>
             <button class="subtab-btn" data-subtab="mdp-lab">Perturbar Probabilidades $p_0$</button>
@@ -371,7 +383,6 @@
                 <div class="field"><label>Descuento $\gamma$ <span class="val-mono" id="lbl-mdp-gamma">0.90</span></label><input id="mdp-gamma" type="range" min="0.05" max="0.98" step="0.01" value="0.90" /></div>
                 <div class="field"><label>Peso inicial $n_0$ <span class="val-mono" id="lbl-mdp-n0">2.0</span></label><input id="mdp-n0" type="range" min="0.5" max="10" step="0.5" value="2.0" /></div>
                 <div class="field"><label>Factor de olvido $\lambda$ <span class="val-mono" id="lbl-mdp-lam">0.90</span></label><input id="mdp-lam" type="range" min="0.50" max="1.00" step="0.01" value="0.90" /></div>
-                <div class="field compact"><label for="mdp-laplace">Laplace $\alpha$</label><input id="mdp-laplace" type="number" min="0" max="10" step="0.5" value="0" /></div>
               </div>
               <div class="btn-group">
                 <button class="btn btn-primary" id="btn-mdp-recalc">Recalcular Bellman</button>
@@ -396,7 +407,7 @@
                 <span class="badge badge-blue" id="mdp-pol-summary-pill">π₀ = CDDC</span>
               </div>
               <div class="table-wrap">
-                <table class="data-table">
+                <table class="data-table table-compact">
                   <thead>
                     <tr>
                       <th>Contexto $(s_{t-1}, A_t)$</th><th class="text-right">Coop $K$</th><th class="text-right">Total $N$</th><th class="text-right">$\hat{p}_0(s, a)$</th>
@@ -427,7 +438,59 @@
           <div id="subpanel-mdp-thm2" class="subpanel">
             <div class="card">
               <div class="card-header">
-                <div><h3 class="card-title">Simulador Interactivo de la Regla de Actualización con Olvido</h3><p class="card-subtitle">Observa el contexto $(CC, C)$ ($p_0 = 0.9530$) comparando olvido activo ($\lambda$) frente a conteo acumulativo ($\lambda = 1.00$)</p></div>
+                <div>
+                  <h3 class="card-title">¿Cómo funciona la regla de olvido? Intuición de $n_0$, $\lambda$ y $\eta_k$</h3>
+                  <p class="card-subtitle">Mitcha no usa una caja negra: pondera su creencia inicial frente a la evidencia nueva en cada ronda mediante dos palancas simples</p>
+                </div>
+              </div>
+
+              <div class="thm2-guide-grid">
+                <div class="thm2-guide-card accent-amber">
+                  <div class="thm2-guide-head">
+                    <span class="thm2-guide-num">1</span>
+                    <h4>¿Qué es $n_0$? · Confianza en el inicio</h4>
+                  </div>
+                  <p>Es cuántas <strong>rondas equivalentes</strong> asumimos que respaldan a la matriz inicial $T_0$ antes de jugar el primer turno. Funciona como un regulador de cuánta fe le tienes al punto de partida:</p>
+                  <ul class="thm2-guide-list">
+                    <li><strong>$n_0$ muy grande:</strong> confía ciegamente en $T_0$ y casi no aprende (se congela como la Base fija).</li>
+                    <li><strong>$n_0 = 0$:</strong> desconfía del inicio y borra $p_0$ con la primera jugada del rival.</li>
+                    <li><strong>$n_0 = 2.0$ (Mitcha):</strong> parte con el peso de $2$ rondas previas — suficiente para arrancar ordenado con $\mathrm{CDDC}$, pero liviano para corregir en $2$ golpes si el rival traiciona.</li>
+                  </ul>
+                </div>
+
+                <div class="thm2-guide-card accent-blue">
+                  <div class="thm2-guide-head">
+                    <span class="thm2-guide-num">2</span>
+                    <h4>¿Qué es $\lambda$ y por qué importa? · Olvido</h4>
+                  </div>
+                  <p>Antes de sumar $+1$ por la jugada nueva, multiplicamos el contador acumulado por $\lambda$: $n_k = \lambda n_{k-1} + 1$. Así el agente conserva $\lambda$ del pasado y descarta $(1 - \lambda)$.</p>
+                  <ul class="thm2-guide-list">
+                    <li><strong>Si $\lambda = 1.00$ (sin olvido):</strong> $n_k = n_0 + k$ crece sin tope ($2, 3, 4, \dots, 52$). Llega un momento en que las jugadas nuevas <strong>casi ni pesan</strong> ($\eta_k \to 0$) y el agente no nota cambios de estrategia.</li>
+                    <li><strong>Con $\lambda = 0.90$:</strong> fija un <strong>techo exacto</strong> en $n_\infty = \frac{1}{1-\lambda} = 10$ ($0.90 \times 10 + 1 = 10$), asegurando que toda jugada reciente pese al menos <strong>$10\%$</strong>.</li>
+                  </ul>
+                </div>
+
+                <div class="thm2-guide-card accent-green">
+                  <div class="thm2-guide-head">
+                    <span class="thm2-guide-num">3</span>
+                    <h4>¿Cómo cambia $p_k$? · Paso $\eta_k = 1/n_k$</h4>
+                  </div>
+                  <p>La tasa $\eta_k = 1/n_k$ es directamente el <strong>peso de la jugada nueva</strong> frente a la creencia previa $p_{k-1}$:</p>
+                  <ul class="thm2-guide-list">
+                    <li><strong>Si el rival coopera ($y_k = 1$):</strong> $p_k$ avanza una fracción $\eta_k$ hacia $1$, sumando $\eta_k(1 - p_{k-1})$.</li>
+                    <li><strong>Si el rival traiciona ($y_k = 0$):</strong> $p_k$ retrocede una fracción $\eta_k$ hacia $0$, restando $\eta_k p_{k-1}$.</li>
+                    <li>Al inicio ($n_k$ chico) se adapta rápido; a largo plazo, $\lambda$ impide que $\eta_k$ caiga a cero.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-title">Simulador Interactivo Paso a Paso</h3>
+                  <p class="card-subtitle" id="thm2-sim-subtitle">Prueba cambiar $n_0$ y $\lambda$, o dispara «50 C + 5 D» para ver cómo $\lambda = 0.90$ mantiene $\eta_k \ge 10\%$ mientras $\lambda = 1.00$ queda congelado</p>
+                </div>
                 <div class="btn-group">
                   <button class="btn btn-success btn-sm" id="btn-sim-add-c">＋ Coopera ($y=1$)</button>
                   <button class="btn btn-danger btn-sm" id="btn-sim-add-d">－ Traiciona ($y=0$)</button>
@@ -435,12 +498,47 @@
                   <button class="btn btn-secondary btn-sm" id="btn-sim-reset">Reiniciar</button>
                 </div>
               </div>
-              <div class="math-block">$$n_k = \lambda n_{k-1} + 1, \quad \eta_k = \frac{1}{n_k}, \quad p_k = \begin{cases} p_{k-1} + \eta_k(1 - p_{k-1}) &amp; \text{si } y_k = 1 \text{ (suma)} \\ p_{k-1} - \eta_k p_{k-1} &amp; \text{si } y_k = 0 \text{ (resta)} \end{cases}$$</div>
-              <div class="grid-asymmetric mt-md" style="margin-bottom:0">
+
+              <div class="thm2-controls-bar">
+                <div class="field wide">
+                  <label for="thm2-context">Contexto inicial $(s_{t-1}, A_t)$</label>
+                  <select id="thm2-context">
+                    <option value="0_1" selected>(CC, C) · p₀ = 0.9530 (cooperación mutua)</option>
+                    <option value="3_1">(DD, C) · p₀ = 0.2586 (adaptación vs Defector)</option>
+                    <option value="1_0">(CD, D) · p₀ = 0.5128 (castigo tras traición)</option>
+                    <option value="2_0">(DC, D) · p₀ = 0.4818 (tras explotar al rival)</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="thm2-n0">Peso inicial $n_0$ <span class="val-mono" id="lbl-thm2-n0">2.0</span></label>
+                  <input id="thm2-n0" type="range" min="0.5" max="10" step="0.5" value="2.0" />
+                </div>
+                <div class="field">
+                  <label for="thm2-lam">Factor de olvido $\lambda$ <span class="val-mono" id="lbl-thm2-lam">0.90</span></label>
+                  <input id="thm2-lam" type="range" min="0.50" max="1.00" step="0.01" value="0.90" />
+                </div>
+                <button class="btn btn-secondary btn-sm" id="btn-sim-default-params" title="Restaurar parámetros de Mitcha (n₀ = 2.0, λ = 0.90)">Mitcha (2.0 / 0.90)</button>
+              </div>
+
+              <div class="math-block">$$n_k = \lambda n_{k-1} + 1, \quad \eta_k = \frac{1}{n_k}, \quad p_k = \begin{cases} p_{k-1} + \eta_k(1 - p_{k-1}) &amp; \text{si } y_k = 1 \text{ (coopera)} \\ p_{k-1} - \eta_k p_{k-1} &amp; \text{si } y_k = 0 \text{ (traiciona)} \end{cases}$$</div>
+
+              <div class="thm2-live-summary" id="thm2-live-summary"></div>
+
+              <div class="thm2-sim-grid mt-md">
                 <div class="canvas-wrap"><canvas id="cv-thm2-sim"></canvas></div>
-                <div class="table-wrap" style="max-height:340px;overflow-y:auto">
-                  <table class="data-table">
-                    <thead><tr><th>$k$</th><th>Evento</th><th class="text-right">$n_k$</th><th class="text-right">$\eta_k$</th><th class="text-right">$p_k$ ($\lambda$)</th><th class="text-right">$p_k$ ($\lambda=1$)</th></tr></thead>
+                <div class="table-wrap thm2-table-wrap">
+                  <table class="data-table table-compact thm2-table">
+                    <thead>
+                      <tr>
+                        <th>$k$</th>
+                        <th>Evento</th>
+                        <th class="text-right">$n_k(\lambda)$</th>
+                        <th class="text-right">$\eta_k(\lambda)$</th>
+                        <th class="text-right">$\eta_k(1)$</th>
+                        <th class="text-right">$p_k(\lambda)$</th>
+                        <th class="text-right">$p_k(1)$</th>
+                      </tr>
+                    </thead>
                     <tbody id="tbody-thm2-sim"></tbody>
                   </table>
                 </div>
@@ -519,30 +617,38 @@
         </section>
 
         <!-- =============================================================== -->
-        <!-- SECTION 6: BÚSQUEDA EXPECTIMAX (GARY) -->
+        <!-- SECTION 6: REFERENCIA INTERMEDIA — GARY (H=2 COMPLETO) -->
         <!-- =============================================================== -->
         <section id="tab-gary" class="tab-section">
+          <div class="gary-hero-card">
+            <div class="gary-hero-photo" id="gary-hero-avatar" title="Gary (Expectimax H=2 + Markov)"></div>
+            <div class="gary-hero-body">
+              <div class="gary-hero-top">
+                <h4>Gary · Referencia Expectimax ($H = 2$, $16$ hojas) + Cierre Markov</h4>
+                <div class="gary-hero-actions">
+                  <a class="btn btn-purple btn-sm" href="gary.pdf" target="_blank" rel="noopener">📄 Resumen de Gary (PDF)</a>
+                </div>
+              </div>
+              <p><strong>Gary</strong> es nuestra referencia alternativa basada en búsqueda: estima la probabilidad de cooperación del rival $E_t = [p_{CC}, p_{CD}, p_{DC}, p_{DD}]^\top$ contando desde cero, despliega el <strong>árbol Expectimax completo a horizonte $H = 2$ ($16$ hojas, $\gamma = 0.90$)</strong> y cierra cada hoja con el valor infinito $V_{\mathrm{Markov}}$ bajo reciprocidad. Al usar $H = 2$, el árbol entero cabe en pantalla y alcanza <strong>$2.692$ pts/ronda (#1/16)</strong> en Axelrod 1980 y <strong>#3/37</strong> en Harper.</p>
+            </div>
+          </div>
+
           <div class="toolbar">
             <div class="controls-row">
-              <div class="field compact"><label>Horizonte $H$ <span class="val-mono" id="lbl-gary-h">4</span></label><input id="gary-h" type="range" min="1" max="4" step="1" value="4" /></div>
-              <div class="field"><label>Descuento $\gamma$ <span class="val-mono" id="lbl-gary-gamma">0.95</span></label><input id="gary-gamma" type="range" min="0.50" max="0.98" step="0.01" value="0.95" /></div>
+              <div class="field compact"><label>Horizonte $H$ <span class="val-mono" id="lbl-gary-h">2</span></label><input id="gary-h" type="range" min="1" max="4" step="1" value="2" /></div>
+              <div class="field"><label>Descuento $\gamma$ <span class="val-mono" id="lbl-gary-gamma">0.90</span></label><input id="gary-gamma" type="range" min="0.50" max="0.98" step="0.01" value="0.90" /></div>
               <div class="field wide"><label for="gary-rival">Rival a enfrentar</label><select id="gary-rival"></select></div>
               <div class="field compact"><label for="gary-seed">Seed</label><input id="gary-seed" type="number" value="42" /></div>
             </div>
             <button class="btn btn-purple" id="btn-run-gary">▶ Simular Partida</button>
           </div>
 
-          <div class="subtabs">
-            <button class="subtab-btn active" data-subtab="gary-step">Decisión Ronda a Ronda y Ventana</button>
-            <button class="subtab-btn" data-subtab="gary-global">Dinámica Global y Ablación</button>
-          </div>
-
           <div id="subpanel-gary-step" class="subpanel active">
             <div class="card">
               <div class="card-header">
                 <div>
-                  <h3 class="card-title">Ventana de Observación y Control Ronda a Ronda</h3>
-                  <p class="card-subtitle" id="gary-turn-summary">Avanza turno a turno para ver cada cálculo exacto del árbol Expectimax antes de decidir</p>
+                  <h3 class="card-title">Inspección Ronda a Ronda y Árbol Expectimax Completo (Gary)</h3>
+                  <p class="card-subtitle" id="gary-turn-summary">Avanza turno a turno para ver las 16 hojas del árbol Expectimax antes de decidir</p>
                 </div>
                 <span class="badge badge-purple" id="gary-turn-badge">Turno 1 / 200</span>
               </div>
@@ -559,20 +665,32 @@
 
               <div class="calc-steps-grid">
                 <div class="calc-step-card">
-                  <div class="calc-step-head"><span class="step-num">1</span><span>Ventana y Conteo Frecuentista $E_t$</span></div>
+                  <div class="calc-step-head"><span class="step-num">1</span><span>Cómo construye $E_t$</span></div>
                   <div id="gary-step1-body"></div>
                 </div>
                 <div class="calc-step-card">
-                  <div class="calc-step-head"><span class="step-num">2</span><span>Heurística Markov en Hojas ($h = \gamma^H V$)</span></div>
+                  <div class="calc-step-head"><span class="step-num">2</span><span>Cola Markov ($h = \gamma^H V$)</span></div>
                   <div id="gary-step2-body"></div>
                 </div>
                 <div class="calc-step-card">
-                  <div class="calc-step-head"><span class="step-num">3</span><span>Evaluación Raíz y Decisión Final</span></div>
+                  <div class="calc-step-head"><span class="step-num">3</span><span>Decisión en Raíz</span></div>
                   <div id="gary-step3-body"></div>
                 </div>
               </div>
 
-              <div class="svg-diagram-box" id="gary-markov-svg"></div>
+              <div class="gary-walkthrough-bar" id="gary-walkthrough-bar">
+                <button type="button" class="gw-pill active" data-gw="all">Ver árbol completo</button>
+                <button type="button" class="gw-pill" data-gw="probs">Paso 1 · Modelo de probabilidades $E_t$</button>
+                <button type="button" class="gw-pill" data-gw="down">Paso 2 · Bajar 2 turnos ($g = r_1 + \gamma r_2$)</button>
+                <button type="button" class="gw-pill" data-gw="leaves">Paso 3 · Pegar cola $h$ y pasar a pts/ronda</button>
+                <button type="button" class="gw-pill" data-gw="up">Paso 4 · Subir (AZAR y MAX) y decidir</button>
+              </div>
+              <div class="gary-step-callout" id="gary-walkthrough-note"></div>
+
+              <div class="svg-diagram-box" id="gary-full-tree-svg"></div>
+              <div class="gary-leaf-inspector" id="gary-leaf-inspector"></div>
+
+              <div class="svg-diagram-box mt-md" id="gary-markov-svg"></div>
 
               <div class="mt-md">
                 <div class="legend-inline mb-sm">
@@ -586,85 +704,6 @@
               </div>
             </div>
           </div>
-
-          <div id="subpanel-gary-global" class="subpanel">
-            <div class="grid-2">
-              <article class="chart-card"><div class="chart-card-head"><div><h3>Horizonte Efectivo $L_\gamma = (1-\gamma)^{-1}$</h3><div class="chart-note">Balance entre peso relativo del futuro e inercia histórica</div></div></div><div class="canvas-wrap"><canvas id="cv-gary-horizon"></canvas></div></article>
-              <article class="chart-card"><div class="chart-card-head"><div><h3>Evaluación en Raíz $\bar{f}_t(C)$ vs. $\bar{f}_t(D)$ frente a Tit For Tat</h3><div class="chart-note">Visión descontada de Expectimax frente al colapso miope de Rulito</div></div></div><div class="canvas-wrap"><canvas id="cv-gary-root"></canvas></div></article>
-              <article class="chart-card"><div class="chart-card-head"><div><h3>Convergencia del Vector Frecuentista $E_t$</h3><div class="chart-note" id="gary-e-subtitle">Evolución de las 4 probabilidades condicionales</div></div></div><div class="canvas-wrap"><canvas id="cv-gary-evec"></canvas></div></article>
-              <article class="chart-card"><div class="chart-card-head"><div><h3>Estudio de Ablación: Árbol $H=4$ vs. Heurística de Markov</h3><div class="chart-note">Aporte de la cadena de Markov terminal en Axelrod, Harper y Mega-Torneo</div></div></div><div class="canvas-wrap"><canvas id="cv-gary-ablation"></canvas></div></article>
-            </div>
-          </div>
-        </section>
-
-        <!-- =============================================================== -->
-        <!-- SECTION 6B: ¿POSIBLE MEJORA A FUTURO? — JACINTO (TALLER 6)      -->
-        <!-- =============================================================== -->
-        <section id="tab-future" class="tab-section">
-          <div class="card">
-            <div class="card-header">
-              <div style="display:flex;align-items:center;gap:14px">
-                <div id="jacinto-hero-avatar"></div>
-                <div>
-                  <h3 class="card-title">¿Posible Mejora a Futuro? — Jacinto (Taller 6)</h3>
-                  <p class="card-subtitle">Guacamayo Jacinto · Fusión de aprendizaje online con olvido (Mitcha) + Exploración Segura UCB para romper óptimos locales como <code>Alternator</code></p>
-                </div>
-              </div>
-              <div class="btn-group">
-                <button class="btn btn-primary btn-sm" id="btn-jacinto-vs-alternator">⚔ Probar Jacinto vs Alternator</button>
-                <button class="btn btn-secondary btn-sm" id="btn-play-jacinto">🎮 Jugar contra Jacinto</button>
-              </div>
-            </div>
-
-            <div class="theorem-box mb-md">
-              <h4>¿Por qué Mitcha (RL Olvido) se estancaba frente a <code>Alternator</code> en $2.500$ pts/ronda?</h4>
-              <p>Al ser puramente <em>greedy</em> ($\arg\max_a Q_t^*(s, a)$), <strong>Mitcha</strong> converge en $t=23$ a la política <code>CDCC</code> (ciclo <code>CD ↔ DC</code> de $2.500$ pts/ronda) y <strong>nunca prueba jugar $D$ en $DC$ ni en $DD$</strong>. Por ello el contexto $(DD, D)$ queda congelado en el prior supervisado $p_0(DD, D) = 0.1574$, cuando contra <code>Alternator</code> la probabilidad real es $p_{\text{real}}(DD, D) = 1.000$.</p>
-            </div>
-
-            <div class="theorem-box mb-md" style="border-left-color:#1d4ed8;background:#eff6ff">
-              <h4>Solución propuesta en Jacinto: Exploración UCB con Compuerta de Seguridad ($s \neq CC$)</h4>
-              <p><strong>Jacinto</strong> añade un bono UCB $Q_{\mathrm{UCB}}(s, a) = Q_t^*(s, a) + c\sqrt{\frac{\ln(t+1)}{1 + k_{s,a}}}$ ($c = 1.5$), pero <strong>bloquea toda exploración cuando $s = CC$ y $P_t(C \mid CC, C) \ge 0.85$</strong>. Así jamás traiciona gratuitamente a estrategas recíprocos como <code>TitForTat</code> o <code>Grudger</code> ($3.000$ pts/ronda), pero sí explora $(DC, D)$ y $(DD, D)$ hasta descubrir el ciclo óptimo <code>DC ↔ DD</code> de <strong>$2.935$ pts/ronda ($2.980$ en los últimos 100 turnos)</strong>.</p>
-            </div>
-
-            <div class="table-wrap">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Condición Experimental ($T=200$, <code>seed=42</code>)</th>
-                    <th class="text-right">5. Mitcha (RL Olvido)</th>
-                    <th class="text-right">6. Jacinto (RL + Safe UCB)</th>
-                    <th>Impacto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><strong>Torneo Axelrod 1980</strong> (5 reps)</td>
-                    <td class="text-right mono">2.662 ± 0.024 (#1/16)</td>
-                    <td class="text-right mono"><strong>2.649 ± 0.025 (#1/16)</strong></td>
-                    <td>Mantiene el <strong>Puesto #1/16</strong> sobre Stein &amp; Rapoport y TFT</td>
-                  </tr>
-                  <tr>
-                    <td><strong>vs <code>Alternator</code></strong> (1v1, $T=200$)</td>
-                    <td class="text-right mono">2.450 (2.500 L100)</td>
-                    <td class="text-right mono" style="color:#1d4ed8"><strong>2.935 (2.980 L100)</strong></td>
-                    <td><strong>+0.485 pts/ronda</strong> · Explota ciclo <code>DC ↔ DD</code> casi al óptimo <code>3.000</code></td>
-                  </tr>
-                  <tr>
-                    <td><strong>vs <code>TitForTat</code> / <code>Grudger</code></strong></td>
-                    <td class="text-right mono">3.000 / 3.000</td>
-                    <td class="text-right mono"><strong>3.000 / 3.000</strong></td>
-                    <td>Compuerta segura evita traiciones espurias en <code>CC</code></td>
-                  </tr>
-                  <tr>
-                    <td><strong>vs <code>Defector</code></strong> (1v1, $T=200$)</td>
-                    <td class="text-right mono">0.925 (1.000 L100)</td>
-                    <td class="text-right mono">0.880 (0.970 L100)</td>
-                    <td>Mínimo costo por verificar $(DD, C)$ antes de fijar $D$</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
         </section>
 
         <!-- =============================================================== -->
@@ -674,7 +713,7 @@
           <div class="subtabs">
             <button class="subtab-btn active" data-subtab="duel-1v1">Duelo 1v1 (Voxel + Ventana)</button>
             <button class="subtab-btn" data-subtab="duel-h2h">Matriz Head-to-Head</button>
-            <button class="subtab-btn" data-subtab="tourn-harper-mega">Harper 41 y Mega-Torneo 175</button>
+            <button class="subtab-btn" data-subtab="tourn-harper-mega">Harper (37) y Mega-Torneo (171)</button>
             <button class="subtab-btn" data-subtab="tourn-live">Ejecutar Torneo en Vivo</button>
           </div>
 
@@ -747,7 +786,7 @@
             <div id="duelview-charts-table" class="duelview-panel hidden">
               <div class="card">
                 <div class="table-wrap" style="max-height:380px;overflow-y:auto">
-                  <table class="data-table">
+                  <table class="data-table table-compact">
                     <thead><tr><th>Turno</th><th class="text-center">Jugada $(A, B)$</th><th class="text-right">Pago $A / B$</th><th class="text-right">Media $A$</th><th class="text-right">Media $B$</th><th class="text-center">Política $A$</th><th>Cálculo Interno $A$</th></tr></thead>
                     <tbody id="tbody-duel-trace"></tbody>
                   </table>
@@ -772,17 +811,17 @@
 
           <div id="subpanel-tourn-harper-mega" class="subpanel">
             <div class="grid-2">
-              <article class="chart-card"><div class="chart-card-head"><div><h3>Ecosistema Harper et al. (41 Estrategias · 10 Semillas)</h3><div class="chart-note">Agentes evolutivos (ANN, FSM, LookerUp, PSO), Zero-Determinant y nuestras 5 generaciones</div></div></div><div class="canvas-wrap xtall"><canvas id="cv-harper-41"></canvas></div></article>
-              <article class="chart-card"><div class="chart-card-head"><div><h3>Mega-Torneo General (175 Estrategias)</h3><div class="chart-note">Top 18 + referencias clásicas + evolución de las 5 generaciones</div></div></div><div class="canvas-wrap xtall"><canvas id="cv-mega-175"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Ecosistema Harper et al. (37 jug. · 36 + agente · 10 Semillas)</h3><div class="chart-note">Cada generación se evalúa de forma independiente contra las 36 estrategias de Harper</div></div></div><div class="canvas-wrap xtall"><canvas id="cv-harper-41"></canvas></div></article>
+              <article class="chart-card"><div class="chart-card-head"><div><h3>Mega-Torneo General (171 jug. · 170 + agente)</h3><div class="chart-note">Top 18 + referencias clásicas + evolución de las 5 generaciones evaluadas individualmente</div></div></div><div class="canvas-wrap xtall"><canvas id="cv-mega-175"></canvas></div></article>
             </div>
             <div class="grid-2">
               <div class="card">
-                <div class="card-header"><h3 class="card-title">Tabla Completa Harper (41)</h3><input id="search-harper" type="text" placeholder="Buscar..." style="max-width:200px" /></div>
-                <div class="table-wrap" style="max-height:330px;overflow-y:auto"><table class="data-table"><thead><tr><th>#</th><th>Estrategia</th><th class="text-right">Media $\pm$ DE</th><th class="text-right">Rank</th></tr></thead><tbody id="tbody-harper"></tbody></table></div>
+                <div class="card-header"><h3 class="card-title">Tabla Completa Harper (37 jug.)</h3><input id="search-harper" type="text" placeholder="Buscar..." style="max-width:200px" /></div>
+                <div class="table-wrap" style="max-height:330px;overflow-y:auto"><table class="data-table table-compact"><thead><tr><th>#</th><th>Estrategia</th><th class="text-right">Media $\pm$ DE</th><th class="text-right">Rank</th></tr></thead><tbody id="tbody-harper"></tbody></table></div>
               </div>
               <div class="card">
-                <div class="card-header"><h3 class="card-title">Tabla Completa Mega-Torneo (175)</h3><input id="search-mega" type="text" placeholder="Buscar..." style="max-width:200px" /></div>
-                <div class="table-wrap" style="max-height:330px;overflow-y:auto"><table class="data-table"><thead><tr><th>#</th><th>Estrategia</th><th class="text-right">Pts / Ronda</th></tr></thead><tbody id="tbody-mega"></tbody></table></div>
+                <div class="card-header"><h3 class="card-title">Tabla Completa Mega-Torneo (171 jug.)</h3><input id="search-mega" type="text" placeholder="Buscar..." style="max-width:200px" /></div>
+                <div class="table-wrap" style="max-height:330px;overflow-y:auto"><table class="data-table table-compact"><thead><tr><th>#</th><th>Estrategia</th><th class="text-right">Pts / Ronda</th></tr></thead><tbody id="tbody-mega"></tbody></table></div>
               </div>
             </div>
           </div>
@@ -791,7 +830,7 @@
             <div class="card">
               <div class="card-header"><div><h3 class="card-title">Ejecutor de Torneos Round-Robin en Vivo</h3><p class="card-subtitle">Compite con tus estrategias incorporadas, las 5 generaciones o ecosistemas clásicos completos</p></div></div>
               <div class="controls-row mb-md">
-                <div class="field wide"><label for="live-tourn-preset">Ecosistema Base</label><select id="live-tourn-preset"><option value="axelrod1980">Torneo de Axelrod 1980 (+ 15 Clásicas)</option><option value="mini10">Mini-Benchmark Rápido (+ 11 Arquetipos)</option><option value="harper41">Ecosistema Harper et al. (+ 36 Avanzadas)</option><option value="custom">Torneo Libre (Solo marcadas)</option></select></div>
+                <div class="field wide"><label for="live-tourn-preset">Ecosistema Base</label><select id="live-tourn-preset"><option value="axelrod1980">Torneo de Axelrod 1980 (+ 15 Clásicas)</option><option value="mini10">Mini-Benchmark Rápido (+ 11 Arquetipos)</option><option value="harper37">Ecosistema Harper et al. (+ 36 Avanzadas)</option><option value="custom">Torneo Libre (Solo marcadas)</option></select></div>
                 <div class="field compact"><label for="live-tourn-turns">Turnos</label><input id="live-tourn-turns" type="number" min="20" max="400" value="200" /></div>
                 <div class="field compact"><label for="live-tourn-nseeds">Semillas</label><select id="live-tourn-nseeds"><option value="1">1 semilla</option><option value="3">3 semillas</option><option value="5" selected>5 semillas</option><option value="10">10 semillas</option></select></div>
                 <button class="btn btn-success" id="btn-start-live-tournament">🏆 Ejecutar Torneo</button>
@@ -836,7 +875,7 @@
                   <button class="subtab-btn" data-bmode="visual_rl">RL MDP</button>
                   <button class="subtab-btn" data-bmode="visual_gary">Expectimax</button>
                   <button class="subtab-btn" data-bmode="visual_phase">Rival por Fases</button>
-                  <button class="subtab-btn" data-bmode="python_code">Python</button>
+                  <button class="subtab-btn" data-bmode="python_code">Plantillas Python</button>
                 </div>
                 <div class="controls-row mb-md">
                   <div class="field wide"><label for="b-name">Nombre</label><input id="b-name" type="text" value="Mi Estrategia" /></div>
@@ -873,8 +912,8 @@
 
                 <div id="bpanel-visual_gary" class="bpanel hidden">
                   <div class="controls-row">
-                    <div class="field compact"><label for="bgary-h">Horizonte $H$</label><select id="bgary-h"><option value="1">H=1</option><option value="2">H=2</option><option value="3">H=3</option><option value="4" selected>H=4</option></select></div>
-                    <div class="field"><label>$\gamma$ <span class="val-mono" id="lbl-bgary-gamma">0.95</span></label><input id="bgary-gamma" type="range" min="0.50" max="0.98" step="0.01" value="0.95" /></div>
+                    <div class="field compact"><label for="bgary-h">Horizonte $H$</label><select id="bgary-h"><option value="1">H=1</option><option value="2" selected>H=2</option><option value="3">H=3</option><option value="4">H=4</option></select></div>
+                    <div class="field"><label>$\gamma$ <span class="val-mono" id="lbl-bgary-gamma">0.90</span></label><input id="bgary-gamma" type="range" min="0.50" max="0.98" step="0.01" value="0.90" /></div>
                     <div class="field"><label for="bgary-markov">Hojas</label><select id="bgary-markov"><option value="true" selected>Markov TFT cerrada</option><option value="false">Sin Markov (h=0)</option></select></div>
                   </div>
                 </div>
@@ -891,7 +930,7 @@
 
                 <div id="bpanel-python_code" class="bpanel hidden">
                   <div class="field mb-sm"><label for="b-py-template">Plantilla de inicio</label><select id="b-py-template"></select></div>
-                  <textarea id="b-py-code" class="code-editor-textarea" spellcheck="false"></textarea>
+                  <p>En el sitio público puedes ejecutar las plantillas incluidas.</p><textarea readonly id="b-py-code" class="code-editor-textarea" spellcheck="false"></textarea>
                 </div>
 
                 <div class="btn-group mt-md">
@@ -903,7 +942,7 @@
 
               <div class="card">
                 <div class="card-header"><div><h3 class="card-title">Estrategias Incorporadas</h3><p class="card-subtitle">Envíalas directo a jugar, a un duelo 1v1 o a un torneo</p></div></div>
-                <div id="custom-strategies-list" class="custom-list"><p class="muted">Aún no has guardado estrategias propias.</p></div>
+                <p>Las estrategias guardadas pertenecen a esta sesión de pestaña y caducan a las 24 horas.</p><div id="custom-strategies-list" class="custom-list"><p class="muted">Aún no has guardado estrategias propias.</p></div>
               </div>
             </div>
           </div>
@@ -946,10 +985,131 @@
           <div id="subpanel-studio-tests" class="subpanel">
             <div class="card">
               <div class="card-header">
-                <div><h3 class="card-title">Verificación Automática de Invariantes Matemáticos</h3><p class="card-subtitle">Comprueba normalización de la matriz $8 \times 4$, optimalidad de Bellman, equivalencia $\lambda=1$ y adaptación no estacionaria</p></div>
+                <div><h3 class="card-title">Verificación Automática de Invariantes Matemáticos</h3><p class="card-subtitle">Comprueba las 8 invariantes oficiales: tabla $8 \times 4$, optimalidad de Bellman ($\le 10^{-6}$), agentes Taller IV, olvido exponencial y adaptación</p></div>
                 <button class="btn btn-success" id="btn-run-unittests">▶ Ejecutar Pruebas en Vivo</button>
               </div>
               <div id="unittest-results-box"><p class="muted">Pulsa el botón para ejecutar la suite de pruebas sobre el motor real.</p></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SECTION 9: ABOUT / ACERCA DEL PROYECTO -->
+        <!-- =============================================================== -->
+        <section id="tab-about" class="tab-section">
+          <div class="about-hero-card">
+            <div class="about-header">
+              <div>
+                <div class="about-eyebrow">About · TEL-351 Agentes Inteligentes</div>
+                <h3 class="about-title">¿Por qué construimos este laboratorio interactivo?</h3>
+              </div>
+              <div class="about-links">
+                <a class="btn btn-secondary btn-sm" href="taller.pdf" target="_blank" rel="noopener">📄 Informe Taller 5 (PDF)</a>
+                <a class="btn btn-purple btn-sm" href="gary.pdf" target="_blank" rel="noopener">📄 Resumen Gary H=2 (PDF)</a>
+                <a class="btn btn-secondary btn-sm" href="api/download-notebook">⬇ Cuaderno (.ipynb)</a>
+                <a class="btn btn-primary btn-sm" href="https://colab.research.google.com/" target="_blank" rel="noopener">▶ Google Colab</a>
+              </div>
+            </div>
+            <div class="about-grid">
+              <div class="about-item">
+                <div>
+                  <h4>En el marco de Agentes Inteligentes (TEL-351)</h4>
+                  <p>Esta página fue construida por Alonso Toro en el marco del ramo <strong>Agentes Inteligentes</strong> como una forma más intuitiva y clara de visualizar los resultados del Dilema del Prisionero Iterado: en vez de revisar solo tablas estáticas, permite jugar contra cada agente, inspeccionar la matriz MDP $8 \times 4$ turno a turno y reproducir los experimentos en vivo sobre Python y <code>axelrod</code>.</p>
+                </div>
+                <a class="about-ref-link" href="taller.pdf" target="_blank" rel="noopener">📄 Leer Informe del Taller 5 →</a>
+              </div>
+              <div class="about-item">
+                <div>
+                  <h4>Inspiración en el video de Veritasium</h4>
+                  <p>El formato visual de las partidas, el anillo interactivo del Primer Torneo de Axelrod (1980) y la comparación entre estrategias <em>Nice</em> y <em>Nasty</em> se inspiraron directamente en el video de <strong>Veritasium</strong> sobre teoría de juegos y el Dilema del Prisionero, buscando llevar esa misma claridad visual al análisis real de nuestros agentes.</p>
+                </div>
+                <a class="yt-preview-card" href="https://www.youtube.com/watch?v=mScpHTIi-kM" target="_blank" rel="noopener">
+                  <div class="yt-thumb-wrap">
+                    <img class="yt-thumb-img" src="static/veritasium_thumb.jpg" alt="Veritasium — What Game Theory Reveals About Life, The Universe, and Everything" />
+                    <div class="yt-play-badge">
+                      <span class="yt-play-btn" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="#ffffff"><path d="M8 5v14l11-7z"/></svg>
+                      </span>
+                    </div>
+                  </div>
+                  <div class="yt-card-meta">
+                    <span class="yt-card-title">What Game Theory Reveals About Life, The Universe, and Everything</span>
+                    <span class="yt-card-channel">▶ Veritasium · Ver en YouTube</span>
+                  </div>
+                </a>
+              </div>
+              <div class="about-item">
+                <div>
+                  <h4>Estado del arte: Harper et al. (2017) y un nuevo benchmark</h4>
+                  <p>Al investigar el problema buscamos referencias del estado del arte y dimos con el trabajo de los propios creadores de la librería <code>axelrod</code>: <strong>Marc Harper, Vincent Knight, Martin Jones, Georgios Koutsovoulos, Nikoleta E. Glynatsi y Owen Campbell (2017)</strong>, <em>"Reinforcement learning produces dominant strategies for the Iterated Prisoner's Dilemma"</em> (<em>PLOS ONE</em>). Ahí entrenaron agentes adaptativos y estrategias evolutivas/RL muy avanzadas (como <code>EvolvedLookerUp</code>, <code>EvolvedANN5</code>, <code>EvolvedFSM16</code> y <code>PSOGambler</code>) contra más de 170 rivales. A partir de ese hallazgo armamos un benchmark mucho más exigente —el ecosistema de <strong>Harper (37 jugadores)</strong> y el <strong>Mega-Torneo de 171 estrategias</strong>— para medir cuánto generalizan nuestros agentes frente a lo más avanzado de la literatura.</p>
+                </div>
+                <a class="about-ref-link" href="https://arxiv.org/abs/1707.06307" target="_blank" rel="noopener">📑 Harper et al. (2017) · PLOS ONE / arXiv →</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Cómo se organizan los agentes en este sitio</h3>
+                <p class="card-subtitle">Todo lo que se muestra corresponde directamente a los experimentos del Taller 5 más la referencia resumida de Gary ($H=2$)</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table table-compact">
+                <thead>
+                  <tr>
+                    <th>Agente</th>
+                    <th>Enfoque</th>
+                    <th>Rol en el proyecto</th>
+                    <th class="text-right">Axelrod 1980 (10 seeds)</th>
+                    <th class="text-right">Harper (37)</th>
+                    <th class="text-right">Mega (171)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>1. Cloud</strong></td>
+                    <td>Frecuentista miope ($\gamma=0$)</td>
+                    <td>Primera iteración (Taller IV Sec. 7): colapsa a traición mutua</td>
+                    <td class="mono text-right">1.939 (#11)</td>
+                    <td class="mono text-right">2.124 (#26)</td>
+                    <td class="mono text-right">1.884 (#153)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>2. Rulito</strong></td>
+                    <td>Bellman 1-step ($\gamma=0.90$)</td>
+                    <td>Segunda iteración (Taller IV Sec. 8): transición sin condicionar en $A_t$</td>
+                    <td class="mono text-right">2.473 (#6)</td>
+                    <td class="mono text-right">2.434 (#22)</td>
+                    <td class="mono text-right">2.368 (#115)</td>
+                  </tr>
+                  <tr class="highlight-gary">
+                    <td><strong>3. Gary</strong></td>
+                    <td>Expectimax $H=2$ + Markov</td>
+                    <td>Referencia alternativa basada en búsqueda (árbol completo de 16 hojas)</td>
+                    <td class="mono text-right"><strong>2.692 (#1)</strong></td>
+                    <td class="mono text-right"><strong>2.854 (#3)</strong></td>
+                    <td class="mono text-right"><strong>2.877 (#8)</strong></td>
+                  </tr>
+                  <tr>
+                    <td><strong>4. Base MDP Fija</strong></td>
+                    <td>Matriz $T_0$ ($8\times 4$) + Bellman</td>
+                    <td>Agente base oficial del Taller 5 ($\pi_0 = \mathrm{CDDC}$, sin aprendizaje)</td>
+                    <td class="mono text-right">2.544 (#4)</td>
+                    <td class="mono text-right">2.579 (#20)</td>
+                    <td class="mono text-right">2.576 (#99)</td>
+                  </tr>
+                  <tr class="highlight-row">
+                    <td><strong>5. Mitcha (RL)</strong></td>
+                    <td>RL online MDP con olvido ($\lambda=0.90$)</td>
+                    <td>Agente central propuesto en el Taller 5: adapta $T_t$ en línea</td>
+                    <td class="mono text-right"><strong>2.650 (#1)</strong></td>
+                    <td class="mono text-right"><strong>2.685 (#15)</strong></td>
+                    <td class="mono text-right"><strong>2.795 (#21)</strong></td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </section>
@@ -960,8 +1120,9 @@
   <div id="chart-tooltip"></div>
   <div id="toast-container"></div>
 
-  <script src="/static/charts.js"></script>
-  <script src="/static/voxel.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="static/charts.js?v=20261123i"></script>
+  <script src="static/voxel.js?v=20261123i"></script>
+  <script src="static/purify.min.js?v=20261123i"></script>
+  <script src="static/app.js?v=20261123i"></script>
 </body>
 </html>
