@@ -4,10 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dilema del Prisionero Iterado — Juego Interactivo y Agentes Inteligentes</title>
-  <link rel="stylesheet" href="static/katex/katex.min.css?v=20261125b" />
-  <link rel="stylesheet" href="static/styles.css?v=20261125b" />
-  <script defer src="static/katex/katex.min.js?v=20261125b"></script>
-  <script defer src="static/katex/contrib/auto-render.min.js?v=20261125b"></script>
+  <link rel="stylesheet" href="static/katex/katex.min.css?v=20261125c" />
+  <link rel="stylesheet" href="static/styles.css?v=20261125c" />
+  <script defer src="static/katex/katex.min.js?v=20261125c"></script>
+  <script defer src="static/katex/contrib/auto-render.min.js?v=20261125c"></script>
 </head>
 <body class="latex-theme">
   <div class="app-shell">
@@ -1049,6 +1049,38 @@
             </div>
           </div>
 
+          <div class="card about-history-card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Contexto histórico: el Torneo de Robert Axelrod (1980)</h3>
+                <p class="card-subtitle">Cómo nació el experimento clásico para estudiar la evolución de la cooperación en el Dilema del Prisionero Iterado</p>
+              </div>
+              <a class="about-ref-link" href="https://www.youtube.com/watch?v=mScpHTIi-kM" target="_blank" rel="noopener">▶ Explicación de Veritasium →</a>
+            </div>
+            <div class="about-history-body">
+              <p>En 1980, el politólogo <strong>Robert Axelrod</strong> propuso un torneo computacional sobre el <strong>Dilema del Prisionero Iterado</strong> para estudiar cómo puede evolucionar y sostenerse la cooperación entre agentes egoístas sin una autoridad central. Convocó a investigadores de teoría de juegos, matemáticas, economía y ciencias sociales a programar estrategias que se enfrentarían todas contra todas durante $200$ rondas repetidas.</p>
+              <p>Contra todo pronóstico, el ganador fue el algoritmo más simple del torneo: <strong>Tit For Tat</strong> (de Anatol Rapoport), que comienza cooperando y luego simplemente imita la última jugada del oponente. A partir de este experimento (publicado en <em>The Evolution of Cooperation</em>, 1984), Axelrod identificó cuatro rasgos que distinguen a las estrategias más exitosas —una historia que el <a href="https://www.youtube.com/watch?v=mScpHTIi-kM" target="_blank" rel="noopener">video de Veritasium</a> explica de forma impecable y que sirve de base para evaluar a nuestros agentes:</p>
+            </div>
+            <div class="history-traits">
+              <div class="history-trait">
+                <strong>1. Amable (<em>Nice</em>)</strong>
+                <span>Nunca es la primera en traicionar; abre cooperando para habilitar el beneficio mutuo.</span>
+              </div>
+              <div class="history-trait">
+                <strong>2. Recíproca (<em>Provocable</em>)</strong>
+                <span>Responde de inmediato ante una traición para evitar ser explotada sistemáticamente.</span>
+              </div>
+              <div class="history-trait">
+                <strong>3. Indulgente (<em>Forgiving</em>)</strong>
+                <span>No guarda rencor eterno; vuelve a cooperar si el rival retoma la cooperación.</span>
+              </div>
+              <div class="history-trait">
+                <strong>4. Clara (<em>Clear</em>)</strong>
+                <span>Su lógica es comprensible para el oponente, facilitando converger a cooperación estable.</span>
+              </div>
+            </div>
+          </div>
+
           <div class="card">
             <div class="card-header">
               <div>
@@ -1121,9 +1153,9 @@
   <div id="chart-tooltip"></div>
   <div id="toast-container"></div>
 
-  <script src="static/charts.js?v=20261125b"></script>
-  <script src="static/voxel.js?v=20261125b"></script>
-  <script src="static/purify.min.js?v=20261125b"></script>
-  <script src="static/app.js?v=20261125b"></script>
+  <script src="static/charts.js?v=20261125c"></script>
+  <script src="static/voxel.js?v=20261125c"></script>
+  <script src="static/purify.min.js?v=20261125c"></script>
+  <script src="static/app.js?v=20261125c"></script>
 </body>
 </html>

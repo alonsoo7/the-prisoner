@@ -1974,3 +1974,64 @@ table.data-table tr.highlight-gary { background: #f5effb; font-weight: 600; }
   .thm2-guide-grid { grid-template-columns: 1fr; }
   .thm2-sim-grid { grid-template-columns: 1fr; }
 }
+
+/* About: Historical Context Card (Robert Axelrod 1980) */
+.about-history-card {
+  border-left: 4px solid var(--navy);
+}
+
+.about-history-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13.3px;
+  line-height: 1.6;
+  color: var(--ink-secondary);
+}
+
+.about-history-body p {
+  margin: 0;
+}
+
+.about-history-body a {
+  color: var(--navy);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.history-traits {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.history-trait {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-trait strong {
+  font-size: 12.4px;
+  color: var(--navy);
+}
+
+.history-trait span {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-secondary);
+}
+
+@media (max-width: 1080px) {
+  .history-traits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .history-traits { grid-template-columns: 1fr; }
+}
